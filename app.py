@@ -62,8 +62,8 @@ async def run_code(request: CodeRequest):
     if not problem:
         raise HTTPException(status_code=404, detail="Problem not found")
     
-    # 2. Run simulation
-    result = run_simulation(request.code, problem["testbench"])
+    # 2. Run simulation - FIXED: Changed from run_simulation to run_real_simulation
+    result = run_real_simulation(request.code, problem["testbench"])
     
     return {
         "success": result["success"],
@@ -139,6 +139,7 @@ def run_real_simulation(user_code: str, testbench_code: str) -> dict:
                 
         except subprocess.TimeoutExpired:
             return {"success": False, "error": "Timeout", "details": "Simulation took too long."}
+
 import os
 PORT = int(os.environ.get("PORT", 8000))
 

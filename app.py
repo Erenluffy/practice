@@ -30,6 +30,8 @@ app.add_middleware(
         "http://localhost:3000",  # Local dev
         "http://localhost:8080",  # Local frontend
         "https://your-static-site.com",  # Your real domain
+        "https://*.onrender.com",  # Render subdomains
+
         "*"  # For testing, restrict in production
     ],
     allow_methods=["POST", "GET", "OPTIONS"],

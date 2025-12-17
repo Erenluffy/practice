@@ -29,6 +29,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",  # Local dev
         "http://localhost:8080",  # Local frontend
+        "http://localhost:5501",  # ADD THIS
+        "http://127.0.0.1:5501",  # ADD THIS (for numeric localhost)
         "https://your-static-site.com",  # Your real domain
         "https://*.onrender.com",  # Render subdomains
 
@@ -57,7 +59,31 @@ async def root():
 @app.get("/api/problems")
 async def get_problems():
     """Return list of available problems"""
-    return {"problems": PROBLEMS}
+    import os
+    
+    print(f"DEBUG: Current directory: {os.getcwd()}")
+    print(f"DEBUG: Files in directory: {os.listdir('.')}")
+    
+    try:
+        # Try different paths
+        possible_paths = ["problems.json", "./problems.json", "/app/problems.json"]
+        
+        for path in possible_paths:
+            print(f"DEBUG: Trying to open: {path}")
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    problems = json.load(f)
+                    print(f"DEBUG: Successfully loaded {len(problems)} problems from {path}")
+                    return {"problems": problems}
+        
+        print(f"DEBUG: Could not find problems.json in any location")
+        return {"problems": []}
+        
+    except Exception as e:
+        print(f"DEBUG: Error loading problems.json: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"problems": []}
 
 @app.get("/api/waveform/{waveform_id}")
 async def get_waveform(waveform_id: str):

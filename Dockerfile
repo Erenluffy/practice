@@ -1,8 +1,13 @@
 # Use Ubuntu instead of slim Python (has better package support)
 FROM ubuntu:22.04
 
+# Set non-interactive frontend and timezone to avoid prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
 # Install Python, Iverilog, and GTKWave from apt
 RUN apt-get update && apt-get install -y \
+    tzdata \
     python3 \
     python3-pip \
     python3-venv \

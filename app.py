@@ -237,7 +237,7 @@ def generate_svg_from_vcd(vcd_file: Path, waveform_id: str) -> Path:
     svg_file = WAVEFORM_DIR / f"{waveform_id}.svg"
     
     # Create TCL script for gtkwave
-    tcl_content = f"""
+    tcl_content = f """
 # Load VCD file
 gtkwave::loadFile "{vcd_file}"
 
@@ -258,6 +258,7 @@ gtkwave::/File/Export_To_SVG "{svg_file}" -flatten
 
 # Exit
 gtkwave::quit
+"""
     
     tcl_script.write_text(tcl_content)
     

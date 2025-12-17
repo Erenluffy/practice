@@ -24,4 +24,4 @@ ENV PYTHONPATH=/app
 ENV PORT=8000
 
 # Run the application
-CMD ["python3", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["python3", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

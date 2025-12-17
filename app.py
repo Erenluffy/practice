@@ -124,7 +124,18 @@ def run_simulation(user_code: str, testbench: str) -> Dict[str, Any]:
             return {"success": False, "error": "Timeout - Code took too long"}
         except Exception as e:
             return {"success": False, "error": f"System error: {str(e)}"}
+# Cloud deployment optimizations
+import os
+PORT = int(os.environ.get("PORT", 8000))
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=PORT,
+        # Optimize for cloud
+        access_log=False,
+        timeout_keep_alive=30,
+        limit_concurrency=100
+    )

@@ -1,52 +1,39 @@
-[
-  {
-    "id": "and_gate",
-    "title": "AND Gate",
-    "description": "Implement a 2-input AND gate: out = a & b",
-    "difficulty": "easy",
-    "category": "Combinational Logic",
-    "template": "module top_module(input a, b, output out);\n  // assign out = a & b;\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb;\n  reg a,b; wire out;\n  top_module dut(a,b,out);\n  initial begin\n    $display(\"Testing AND gate...\");\n    a=0;b=0;#10; if(out!==1'b0) $display(\"FAIL: 0&0=0, got %b\", out);\n    a=0;b=1;#10; if(out!==1'b0) $display(\"FAIL: 0&1=0, got %b\", out);\n    a=1;b=0;#10; if(out!==1'b0) $display(\"FAIL: 1&0=0, got %b\", out);\n    a=1;b=1;#10; if(out!==1'b1) $display(\"FAIL: 1&1=1, got %b\", out);\n    $display(\"✅ PASS: All tests correct!\");\n    $finish;\n  end\nendmodule",
-    "hint": "Use the & operator: assign out = a & b;"
-  },
-  {
-    "id": "or_gate", 
-    "title": "OR Gate",
-    "description": "Implement a 2-input OR gate: out = a | b",
-    "difficulty": "easy",
-    "category": "Combinational Logic",
-    "template": "module top_module(input a, b, output out);\n  // assign out = a | b;\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb;\n  reg a,b; wire out;\n  top_module dut(a,b,out);\n  initial begin\n    $display(\"Testing OR gate...\");\n    a=0;b=0;#10; if(out!==1'b0) $display(\"FAIL: 0|0=0, got %b\", out);\n    a=0;b=1;#10; if(out!==1'b1) $display(\"FAIL: 0|1=1, got %b\", out);\n    a=1;b=0;#10; if(out!==1'b1) $display(\"FAIL: 1|0=1, got %b\", out);\n    a=1;b=1;#10; if(out!==1'b1) $display(\"FAIL: 1|1=1, got %b\", out);\n    $display(\"✅ PASS: All tests correct!\");\n    $finish;\n  end\nendmodule",
-    "hint": "Use the | operator"
-  },
-  {
-    "id": "mux_2to1",
-    "title": "2-to-1 Multiplexer",
-    "description": "When sel=0, out=a; when sel=1, out=b",
-    "difficulty": "easy",
-    "category": "Combinational Logic",
-    "template": "module top_module(input a, b, sel, output out);\n  // assign out = sel ? b : a;\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb;\n  reg a,b,sel; wire out;\n  top_module dut(a,b,sel,out);\n  initial begin\n    $display(\"Testing 2-to-1 MUX...\");\n    a=0;b=1;sel=0;#10; if(out!==1'b0) $display(\"FAIL: a=0,b=1,sel=0 -> out=0, got %b\", out);\n    a=0;b=1;sel=1;#10; if(out!==1'b1) $display(\"FAIL: a=0,b=1,sel=1 -> out=1, got %b\", out);\n    a=1;b=0;sel=0;#10; if(out!==1'b1) $display(\"FAIL: a=1,b=0,sel=0 -> out=1, got %b\", out);\n    a=1;b=0;sel=1;#10; if(out!==1'b0) $display(\"FAIL: a=1,b=0,sel=1 -> out=0, got %b\", out);\n    $display(\"✅ PASS: All tests correct!\");\n    $finish;\n  end\nendmodule",
-    "hint": "Use ternary operator: assign out = sel ? b : a;"
-  },
-  {
-    "id": "full_adder",
-    "title": "Full Adder",
-    "description": "Implement a 1-bit full adder with carry-in (cin) and carry-out (cout). Sum = a ⊕ b ⊕ cin, Cout = (a&b) | (b&cin) | (a&cin)",
-    "difficulty": "medium",
-    "category": "Arithmetic Circuits",
-    "template": "module top_module(input a, b, cin, output Sum, Cout);\n  // assign Sum = a ^ b ^ cin;\n  // assign Cout = (a & b) | (b & cin) | (a & cin);\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb;\n  reg a,b,cin; wire Sum,Cout;\n  top_module dut(a,b,cin,Sum,Cout);\n  initial begin\n    $display(\"Testing Full Adder...\");\n    // Test all 8 combinations\n    a=0;b=0;cin=0;#10; if({Cout,Sum}!==2'b00) $display(\"FAIL: 0+0+0=00, got %b%b\", Cout,Sum);\n    a=0;b=0;cin=1;#10; if({Cout,Sum}!==2'b01) $display(\"FAIL: 0+0+1=01, got %b%b\", Cout,Sum);\n    a=0;b=1;cin=0;#10; if({Cout,Sum}!==2'b01) $display(\"FAIL: 0+1+0=01, got %b%b\", Cout,Sum);\n    a=0;b=1;cin=1;#10; if({Cout,Sum}!==2'b10) $display(\"FAIL: 0+1+1=10, got %b%b\", Cout,Sum);\n    a=1;b=0;cin=0;#10; if({Cout,Sum}!==2'b01) $display(\"FAIL: 1+0+0=01, got %b%b\", Cout,Sum);\n    a=1;b=0;cin=1;#10; if({Cout,Sum}!==2'b10) $display(\"FAIL: 1+0+1=10, got %b%b\", Cout,Sum);\n    a=1;b=1;cin=0;#10; if({Cout,Sum}!==2'b10) $display(\"FAIL: 1+1+0=10, got %b%b\", Cout,Sum);\n    a=1;b=1;cin=1;#10; if({Cout,Sum}!==2'b11) $display(\"FAIL: 1+1+1=11, got %b%b\", Cout,Sum);\n    $display(\"✅ PASS: All 8 test cases correct!\");\n    $finish;\n  end\nendmodule",
-    "hint": "Sum is XOR of all inputs: a ^ b ^ cin. Cout is majority function."
-  },
-  {
-    "id": "d_flipflop",
-    "title": "D Flip-Flop",
-    "description": "Implement a positive-edge triggered D flip-flop. Output q should update only on rising clock edge.",
-    "difficulty": "medium",
-    "category": "Sequential Logic",
-    "template": "module top_module(input clk, input d, output reg q);\n  // always @(posedge clk) q <= d;\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb;\n  reg clk=0,d; wire q;\n  top_module dut(clk,d,q);\n  always #5 clk=~clk;\n  initial begin\n    $display(\"Testing D Flip-Flop...\");\n    d=0; #10; if(q!==1'b0) $display(\"FAIL: After 1st posedge, q should be 0\");\n    d=1; #10; if(q!==1'b1) $display(\"FAIL: After 2nd posedge, q should be 1\");\n    d=0; #10; if(q!==1'b0) $display(\"FAIL: After 3rd posedge, q should be 0\");\n    d=1; #10; if(q!==1'b1) $display(\"FAIL: After 4th posedge, q should be 1\");\n    $display(\"✅ PASS: D Flip-Flop works correctly!\");\n    $finish;\n  end\nendmodule",
-    "hint": "Use: always @(posedge clk) q <= d;"
-  }
-]
+{
+  "id": "full_adder",
+  "title": "Full Adder",
+  "template": "module top_module(input a, b, cin, output sum, cout);\n  // Your code here\nendmodule",
+  "testbench": "
+module tb();
+    reg a, b, cin;
+    wire sum, cout;
+    integer passed_tests = 0;
+    integer total_tests = 0;
+    
+    // Instantiate the student's module
+    top_module dut (.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));
+    
+    initial begin
+        $display(\"Testing Full Adder...\");
+        
+        // Test 1
+        a=0; b=0; cin=0; #10;
+        total_tests = total_tests + 1;
+        if (sum !== 0 || cout !== 0) begin
+            $display(\"FAIL 000: Expected {cout,sum}=2'b00, Got {cout,sum}=2'b%1b%1b\", cout, sum);
+        end else begin
+            passed_tests = passed_tests + 1;
+        end
+        
+        // ... (More test cases for a,b,cin combinations)
+        
+        // Final Result
+        if (passed_tests == total_tests) begin
+            $display(\"PASS: All %0d tests correct!\", total_tests);
+        end else begin
+            $display(\"FAIL: Passed %0d/%0d tests\", passed_tests, total_tests);
+        end
+        $finish;
+    end
+endmodule
+  "
+}

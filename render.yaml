@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: vlsi-practice-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    env: python
+    plan: free
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: PYTHONUNBUFFERED
+        value: true
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1

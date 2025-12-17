@@ -73,24 +73,31 @@ async def run_code(request: CodeRequest):
         "hint": problem.get("hint", "") if not result["success"] else ""
     }
 
-def run_simulation(user_code: str, testbench: str) -> Dict[str, Any]:
-    """Run iverilog simulation and return results"""
+
+def run_real_simulation(user_code: str, testbench_code: str) -> dict:
+    """
+    Takes user's Verilog module and the hidden testbench,
+    compiles and simulates using Icarus Verilog, and returns the results.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
+        # 1. Create the single source file
+        # The testbench instantiates the user's 'top_module'
+        combined_source = f"""
+`timescale 1ns/1ps
+{user_code}
+{testbench_code}
+        """
+        
+        source_file = os.path.join(tmpdir, "design.v")
+        with open(source_file, 'w') as f:
+            f.write(combined_source)
+        
+        # 2. Compile with Icarus Verilog
+        output_executable = os.path.join(tmpdir, "sim")
+        compile_cmd = ["iverilog", "-o", output_executable, source_file]
+        
         try:
-            # Write user code
-            design_file = os.path.join(tmpdir, "design.v")
-            with open(design_file, "w") as f:
-                f.write(user_code)
-            
-            # Write testbench
-            tb_file = os.path.join(tmpdir, "tb.v")
-            with open(tb_file, "w") as f:
-                f.write(testbench)
-            
-            # Compile
-            output_file = os.path.join(tmpdir, "sim")
-            compile_cmd = ["iverilog", "-o", output_file, design_file, tb_file]
-            
+            # Compile step
             compile_result = subprocess.run(
                 compile_cmd,
                 capture_output=True,
@@ -101,30 +108,37 @@ def run_simulation(user_code: str, testbench: str) -> Dict[str, Any]:
             if compile_result.returncode != 0:
                 return {
                     "success": False,
-                    "error": f"Compilation failed: {compile_result.stderr[:500]}"
+                    "error": "Compilation Failed",
+                    "details": compile_result.stderr,
+                    "type": "compilation"
                 }
             
-            # Simulate
+            # 3. Simulate with vvp
             sim_result = subprocess.run(
-                ["vvp", output_file],
+                ["vvp", output_executable],
                 capture_output=True,
                 text=True,
                 timeout=10
             )
             
-            output = sim_result.stdout + sim_result.stderr
+            # 4. Parse the simulation output
+            # The testbench uses $display("PASS") or $display("FAIL: ...")
+            output = sim_result.stdout
             
-            return {
-                "success": "PASS" in output or "SUCCESS" in output,
-                "output": output[:1000],  # Limit size
-                "error": "" if "PASS" in output else "Tests failed"
-            }
-            
+            if "PASS" in output:
+                return {"success": True, "output": output}
+            else:
+                # Extract error message if any
+                error_line = next((line for line in output.split('\n') if "FAIL" in line), "Simulation output did not contain PASS.")
+                return {
+                    "success": False,
+                    "error": "Test Failed",
+                    "details": error_line,
+                    "output": output
+                }
+                
         except subprocess.TimeoutExpired:
-            return {"success": False, "error": "Timeout - Code took too long"}
-        except Exception as e:
-            return {"success": False, "error": f"System error: {str(e)}"}
-# Cloud deployment optimizations
+            return {"success": False, "error": "Timeout", "details": "Simulation took too long."}
 import os
 PORT = int(os.environ.get("PORT", 8000))
 

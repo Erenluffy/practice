@@ -3,37 +3,37 @@
   "title": "Full Adder",
   "template": "module top_module(input a, b, cin, output sum, cout);\n  // Your code here\nendmodule",
   "testbench": "
-module tb();
-    reg a, b, cin;
-    wire sum, cout;
-    integer passed_tests = 0;
-    integer total_tests = 0;
-    
-    // Instantiate the student's module
-    top_module dut (.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));
-    
-    initial begin
-        $display(\"Testing Full Adder...\");
-        
-        // Test 1
-        a=0; b=0; cin=0; #10;
-        total_tests = total_tests + 1;
-        if (sum !== 0 || cout !== 0) begin
-            $display(\"FAIL 000: Expected {cout,sum}=2'b00, Got {cout,sum}=2'b%1b%1b\", cout, sum);
-        end else begin
-            passed_tests = passed_tests + 1;
-        end
-        
-        // ... (More test cases for a,b,cin combinations)
-        
-        // Final Result
-        if (passed_tests == total_tests) begin
-            $display(\"PASS: All %0d tests correct!\", total_tests);
-        end else begin
-            $display(\"FAIL: Passed %0d/%0d tests\", passed_tests, total_tests);
-        end
-        $finish;
-    end
-endmodule
-  "
-}
+  module tb();
+      reg a, b, cin;
+      wire sum, cout;
+      integer passed_tests = 0;
+      integer total_tests = 0;
+      
+      // Instantiate the student's module
+      top_module dut (.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));
+      
+      initial begin
+          $display(\"Testing Full Adder...\");
+          
+          // Test 1
+          a=0; b=0; cin=0; #10;
+          total_tests = total_tests + 1;
+          if (sum !== 0 || cout !== 0) begin
+              $display(\"FAIL 000: Expected {cout,sum}=2'b00, Got {cout,sum}=2'b%1b%1b\", cout, sum);
+          end else begin
+              passed_tests = passed_tests + 1;
+          end
+          
+          // ... (More test cases for a,b,cin combinations)
+          
+          // Final Result
+          if (passed_tests == total_tests) begin
+              $display(\"PASS: All %0d tests correct!\", total_tests);
+          end else begin
+              $display(\"FAIL: Passed %0d/%0d tests\", passed_tests, total_tests);
+          end
+          $finish;
+      end
+  endmodule
+    "
+  }

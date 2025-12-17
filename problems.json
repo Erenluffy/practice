@@ -1,0 +1,47 @@
+[
+  {
+    "id": "and_gate",
+    "title": "AND Gate",
+    "description": "Implement a 2-input AND gate: out = a & b",
+    "difficulty": "easy",
+    "template": "module top_module(input a, b, output out);\n  // Your code here\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb;\n  reg a,b; wire out;\n  top_module dut(a,b,out);\n  initial begin\n    a=0;b=0;#10; if(out!==0) $display(\"FAIL: 0&0\");\n    a=0;b=1;#10; if(out!==0) $display(\"FAIL: 0&1\");\n    a=1;b=0;#10; if(out!==0) $display(\"FAIL: 1&0\");\n    a=1;b=1;#10; if(out!==1) $display(\"FAIL: 1&1\");\n    $display(\"PASS\"); $finish;\n  end\nendmodule",
+    "hint": "Use the & operator: assign out = a & b;"
+  },
+  {
+    "id": "or_gate",
+    "title": "OR Gate",
+    "description": "Implement a 2-input OR gate",
+    "difficulty": "easy",
+    "template": "module top_module(input a, b, output out);\n  // assign out = a | b;\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb;\n  reg a,b; wire out;\n  top_module dut(a,b,out);\n  initial begin\n    a=0;b=0;#10; if(out!==0) $display(\"FAIL\");\n    a=0;b=1;#10; if(out!==1) $display(\"FAIL\");\n    a=1;b=0;#10; if(out!==1) $display(\"FAIL\");\n    a=1;b=1;#10; if(out!==1) $display(\"FAIL\");\n    $display(\"PASS\"); $finish;\n  end\nendmodule",
+    "hint": "Use the | operator"
+  },
+  {
+    "id": "mux_2to1",
+    "title": "2-to-1 Multiplexer",
+    "description": "When sel=0, out=a; when sel=1, out=b",
+    "difficulty": "easy",
+    "template": "module top_module(input a, b, sel, output out);\n  // Your code here\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb;\n  reg a,b,sel; wire out;\n  top_module dut(a,b,sel,out);\n  initial begin\n    a=0;b=1;sel=0;#10; if(out!==0) $display(\"FAIL\");\n    a=0;b=1;sel=1;#10; if(out!==1) $display(\"FAIL\");\n    a=1;b=0;sel=0;#10; if(out!==1) $display(\"FAIL\");\n    a=1;b=0;sel=1;#10; if(out!==0) $display(\"FAIL\");\n    $display(\"PASS\"); $finish;\n  end\nendmodule",
+    "hint": "Use: assign out = sel ? b : a;"
+  },
+  {
+    "id": "full_adder",
+    "title": "Full Adder",
+    "description": "Implement a 1-bit full adder with carry-in and carry-out",
+    "difficulty": "medium",
+    "template": "module top_module(input a, b, cin, output sum, cout);\n  // sum = a ^ b ^ cin\n  // cout = (a&b) | (b&cin) | (cin&a)\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb;\n  reg a,b,cin; wire sum,cout;\n  top_module dut(a,b,cin,sum,cout);\n  initial begin\n    // Test 8 combinations\n    $display(\"Testing...\");\n    if ({cout,sum} !== 0) $display(\"FAIL 000\");\n    // ... more tests\n    $display(\"PASS\"); $finish;\n  end\nendmodule",
+    "hint": "sum is XOR of all inputs, cout is majority function"
+  },
+  {
+    "id": "d_flipflop",
+    "title": "D Flip-Flop",
+    "description": "Implement a positive-edge triggered D flip-flop",
+    "difficulty": "medium",
+    "template": "module top_module(input clk, input d, output reg q);\n  // Your code here\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb;\n  reg clk=0,d; wire q;\n  top_module dut(clk,d,q);\n  always #5 clk=~clk;\n  initial begin\n    d=0; #10; if(q!==0) $display(\"FAIL1\");\n    d=1; #10; if(q!==1) $display(\"FAIL2\");\n    d=0; #10; if(q!==0) $display(\"FAIL3\");\n    $display(\"PASS\"); $finish;\n  end\nendmodule",
+    "hint": "Use: always @(posedge clk) q <= d;"
+  }
+]

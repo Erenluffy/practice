@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VLSI Practice API")
 
-# Create waveform directory
+# Create waveform directory - use absolute path
 WAVEFORM_DIR = Path("/tmp/waveforms")
 WAVEFORM_DIR.mkdir(exist_ok=True, parents=True)
 
@@ -126,10 +126,22 @@ async def get_waveform(waveform_id: str):
     """Serve waveform files"""
     try:
         logger.info(f"Requesting waveform: {waveform_id}")
+        logger.info(f"Waveform directory: {WAVEFORM_DIR}")
+        logger.info(f"Files in directory: {list(WAVEFORM_DIR.glob('*'))}")
         
-        # Check for SVG first
+        # Clean up any invalid characters
+        waveform_id = waveform_id.strip()
+        if not waveform_id:
+            raise HTTPException(status_code=400, detail="Invalid waveform ID")
+        
+        # Check for files with this ID
         svg_path = WAVEFORM_DIR / f"{waveform_id}.svg"
         vcd_path = WAVEFORM_DIR / f"{waveform_id}.vcd"
+        
+        logger.info(f"Checking SVG path: {svg_path}")
+        logger.info(f"Checking VCD path: {vcd_path}")
+        logger.info(f"SVG exists: {svg_path.exists()}")
+        logger.info(f"VCD exists: {vcd_path.exists()}")
         
         if svg_path.exists():
             logger.info(f"Serving SVG: {svg_path}")
@@ -146,8 +158,17 @@ async def get_waveform(waveform_id: str):
                 filename=f"{waveform_id}.vcd"
             )
         else:
+            # Try to find any file with this ID
+            for file in WAVEFORM_DIR.glob(f"{waveform_id}*"):
+                logger.info(f"Found alternative file: {file}")
+                return FileResponse(
+                    file,
+                    media_type="application/octet-stream",
+                    filename=file.name
+                )
+            
             logger.warning(f"Waveform not found: {waveform_id}")
-            raise HTTPException(status_code=404, detail="Waveform not found or expired")
+            raise HTTPException(status_code=404, detail=f"Waveform not found. Available files: {list(WAVEFORM_DIR.glob('*'))}")
     except HTTPException:
         raise
     except Exception as e:
@@ -344,20 +365,27 @@ def run_real_simulation(user_code: str, testbench_code: str, generate_waveform: 
                     if waveform_file.exists() and waveform_file.stat().st_size > 0:
                         # Copy VCD to persistent storage
                         dest_vcd = WAVEFORM_DIR / f"{waveform_id}.vcd"
-                        shutil.copy2(waveform_file, dest_vcd)
-                        logger.info(f"Waveform saved: {dest_vcd} ({dest_vcd.stat().st_size} bytes)")
-                        
-                        # Try to generate SVG - but don't block if it fails
                         try:
-                            # Run SVG generation in background to avoid timeout
-                            svg_file = generate_svg_from_vcd_async(waveform_file, waveform_id)
-                            if svg_file:
-                                result["waveform_svg"] = True
+                            shutil.copy2(waveform_file, dest_vcd)
+                            logger.info(f"Waveform saved: {dest_vcd} ({dest_vcd.stat().st_size} bytes)")
+                            logger.info(f"Waveform file exists: {dest_vcd.exists()}")
+                            
+                            # Verify the file was copied correctly
+                            if dest_vcd.exists() and dest_vcd.stat().st_size > 0:
+                                result["waveform_id"] = waveform_id
+                                logger.info(f"Waveform ID set: {waveform_id}")
+                                
+                                # Try SVG generation but don't block on it
+                                try:
+                                    svg_success = generate_svg_from_vcd_simple(waveform_file, waveform_id)
+                                    if svg_success:
+                                        result["waveform_svg"] = True
+                                except Exception as e:
+                                    logger.warning(f"SVG generation optional failure: {e}")
+                            else:
+                                logger.error(f"Waveform file not properly copied: {dest_vcd}")
                         except Exception as e:
-                            logger.warning(f"SVG generation failed (VCD still available): {e}")
-                            # Don't fail the whole request if SVG generation fails
-                        
-                        result["waveform_id"] = waveform_id
+                            logger.error(f"Failed to copy waveform file: {e}")
                     else:
                         logger.warning("Waveform file not created or empty during simulation")
                 
@@ -388,65 +416,67 @@ def run_real_simulation(user_code: str, testbench_code: str, generate_waveform: 
                 "details": str(e)
             }
 
-def generate_svg_from_vcd_async(vcd_file: Path, waveform_id: str) -> Optional[Path]:
+def generate_svg_from_vcd_simple(vcd_file: Path, waveform_id: str) -> bool:
     """
-    Generate SVG waveform from VCD using gtkwave - runs asynchronously
+    Very simple SVG generation - returns True if successful
     """
     svg_file = WAVEFORM_DIR / f"{waveform_id}.svg"
     
-    # Create a simplified TCL script that exits quickly
+    # Remove existing SVG if any
+    if svg_file.exists():
+        try:
+            svg_file.unlink()
+        except:
+            pass
+    
+    # Try a simple TCL script
     tcl_content = f'''\
 gtkwave::loadFile "{vcd_file}"
-set all_signals [gtkwave::getSignals "*"]
-gtkwave::addSignalsFromList $all_signals
-gtkwave::setZoomFactor -5
-gtkwave::/File/Export_To_SVG "{svg_file}"
+set ns [gtkwave::getSignals "*"]
+if {{[llength $ns] > 0}} {{
+    gtkwave::addSignalsFromList $ns
+    gtkwave::/File/Export_To_SVG "{svg_file}"
+}}
 exit
 '''
     
-    # Write TCL script
     tcl_file = WAVEFORM_DIR / f"{waveform_id}.tcl"
     tcl_file.write_text(tcl_content)
     
     try:
-        # Use a simpler approach with shorter timeout
-        cmd = []
+        # Use minimal command
+        cmd = ["timeout", "10s"]
         
-        # Check DISPLAY environment
+        # Check if xvfb is needed
         if not os.environ.get("DISPLAY"):
-            # No display available, try xvfb
             try:
                 subprocess.run(["which", "xvfb-run"], capture_output=True, check=True)
-                cmd = ["xvfb-run", "-a"]
+                cmd.extend(["xvfb-run", "-a"])
             except:
-                logger.warning("No DISPLAY and xvfb-run not available")
-                return None
+                logger.warning("No display available, skipping SVG")
+                return False
         
-        cmd.extend(["gtkwave", "-f", str(vcd_file), "-T", str(tcl_file)])
+        cmd.extend(["gtkwave", "-T", str(tcl_file)])
         
-        logger.info(f"Running GTKWave for SVG generation: {' '.join(cmd)}")
+        logger.info(f"Attempting SVG generation: {' '.join(cmd)}")
         
-        # Use a shorter timeout
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=15  # Shorter timeout
+            timeout=15
         )
         
         if result.returncode == 0 and svg_file.exists() and svg_file.stat().st_size > 100:
-            logger.info(f"SVG generated successfully: {svg_file}")
-            return svg_file
+            logger.info(f"SVG generated: {svg_file}")
+            return True
         else:
-            logger.warning(f"GTKWave failed or no SVG created: {result.stderr}")
-            return None
+            logger.warning(f"SVG generation failed: {result.stderr}")
+            return False
             
-    except subprocess.TimeoutExpired:
-        logger.warning("GTKWave timeout - SVG generation taking too long")
-        return None
     except Exception as e:
         logger.warning(f"SVG generation error: {e}")
-        return None
+        return False
 
 @app.get("/api/health")
 async def health_check():
@@ -486,8 +516,20 @@ async def health_check():
         "missing_tools": missing_tools,
         "waveform_dir": str(WAVEFORM_DIR),
         "problems_count": len(PROBLEMS),
-        "waveform_files": len(list(WAVEFORM_DIR.glob("*.vcd"))) + len(list(WAVEFORM_DIR.glob("*.svg")))
+        "waveform_files": list(WAVEFORM_DIR.glob("*"))
     }
+
+@app.get("/api/debug/waveforms")
+async def debug_waveforms():
+    """Debug endpoint to list all waveform files"""
+    files = []
+    for file in WAVEFORM_DIR.glob("*"):
+        files.append({
+            "name": file.name,
+            "size": file.stat().st_size,
+            "modified": file.stat().st_mtime
+        })
+    return {"files": files}
 
 @app.delete("/api/waveforms")
 async def cleanup_waveforms():

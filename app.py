@@ -28,7 +28,7 @@ app = FastAPI(title="VLSI Practice API")
 
 # MongoDB configuration
 MONGODB_URL = os.environ.get("MONGODB_URI", "mongodb+srv://teddugovardhan544_db_user:WVjIA96jQ31net0j@cluster0.kwkkleo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
-DATABASE_NAME = os.environ.get("MONGODB_DB", "Cluster0")
+DATABASE_NAME = os.environ.get("MONGODB_DB", "vlsipractice")
 
 # Initialize MongoDB client
 try:
@@ -36,10 +36,12 @@ try:
     db = client[DATABASE_NAME]
     waveforms_collection = db["waveforms"]
     logger.info(f"Connected to MongoDB: {DATABASE_NAME}")
+    MONGO_CONNECTED = True
 except Exception as e:
     logger.error(f"Failed to connect to MongoDB: {e}")
     client = None
     waveforms_collection = None
+    MONGO_CONNECTED = False
 
 # CORS
 app.add_middleware(
@@ -76,7 +78,7 @@ async def get_problems():
 async def get_waveform(waveform_id: str, download: bool = False):
     """Serve waveform from MongoDB"""
     try:
-        if not waveforms_collection:
+        if not MONGO_CONNECTED or waveforms_collection is None:
             raise HTTPException(status_code=500, detail="Database not available")
         
         # Find waveform in database
@@ -163,7 +165,7 @@ async def run_code(request: CodeRequest, background_tasks: BackgroundTasks):
 async def schedule_waveform_cleanup(waveform_id: str):
     """Schedule cleanup of waveform after 24 hours"""
     await asyncio.sleep(24 * 3600)  # 24 hours
-    if waveforms_collection:
+    if MONGO_CONNECTED and waveforms_collection is not None:
         await waveforms_collection.delete_one({"waveform_id": waveform_id})
         logger.info(f"Cleaned up expired waveform: {waveform_id}")
 
@@ -221,7 +223,7 @@ async def run_simulation(user_code: str, testbench: str, generate_waveform: bool
             result = {"success": True, "output": output}
             
             # Save waveform to MongoDB if requested
-            if generate_waveform and waveform_id and waveforms_collection:
+            if generate_waveform and waveform_id and MONGO_CONNECTED and waveforms_collection is not None:
                 vcd_file = tmp_path / "waveform.vcd"
                 if vcd_file.exists() and vcd_file.stat().st_size > 0:
                     try:
@@ -309,10 +311,10 @@ def create_basic_html(waveform_id: str) -> str:
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
-    mongo_status = "connected" if client else "disconnected"
+    mongo_status = "connected" if MONGO_CONNECTED else "disconnected"
     
     waveform_count = 0
-    if waveforms_collection:
+    if MONGO_CONNECTED and waveforms_collection is not None:
         try:
             waveform_count = await waveforms_collection.count_documents({})
         except:
@@ -335,7 +337,7 @@ async def periodic_cleanup():
     """Clean up expired waveforms every hour"""
     while True:
         try:
-            if waveforms_collection:
+            if MONGO_CONNECTED and waveforms_collection is not None:
                 # Delete waveforms older than 24 hours
                 cutoff = datetime.now() - timedelta(hours=24)
                 result = await waveforms_collection.delete_many({

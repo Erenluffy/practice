@@ -26,13 +26,15 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create waveform directory
-RUN mkdir -p /app/waveforms
-RUN chmod 777 /app/waveforms  # Make it writable
+# Create waveform directory with proper permissions
+RUN mkdir -p /app/waveforms && chmod 755 /app/waveforms
 
 # Set Python path
 ENV PYTHONPATH=/app
 ENV PORT=8000
 
-# Run the application
-CMD ["python3", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use gunicorn for production (Render.com prefers this)
+RUN pip3 install gunicorn
+
+# Run the application with gunicorn
+CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "app:app", "--bind", "0.0.0.0:8000"]

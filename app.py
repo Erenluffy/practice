@@ -6,7 +6,8 @@ Run on your VPS: uvicorn app:app --host 0.0.0.0 --port 8000
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import subprocess
 import tempfile
@@ -14,29 +15,37 @@ import os
 import json
 import shutil
 import uuid
-from typing import Dict, Any
+import logging
+from typing import Dict, Any, List, Optional
 from pathlib import Path
+
+# Setup logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VLSI Practice API")
 
 # Create waveform directory
-WAVEFORM_DIR = Path("/app/waveforms")
-WAVEFORM_DIR.mkdir(exist_ok=True)
+WAVEFORM_DIR = Path("/tmp/waveforms")
+WAVEFORM_DIR.mkdir(exist_ok=True, parents=True)
+
+# Mount static files for waveform access
+app.mount("/waveforms", StaticFiles(directory=WAVEFORM_DIR), name="waveforms")
 
 # CORS - ALLOW YOUR STATIC SITE
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",  # Local dev
-        "http://localhost:8080",  # Local frontend
-        "http://localhost:5501",  # ADD THIS
-        "http://127.0.0.1:5501",  # ADD THIS (for numeric localhost)
-        "https://your-static-site.com",  # Your real domain
-        "https://*.onrender.com",  # Render subdomains
-
-        "*"  # For testing, restrict in production
+        "http://localhost:3000",
+        "http://localhost:8080",
+        "http://localhost:5501",
+        "http://127.0.0.1:5501",
+        "https://your-static-site.com",
+        "https://*.onrender.com",
+        "http://localhost:8000",
+        "*"
     ],
-    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_methods=["POST", "GET", "OPTIONS", "DELETE"],
     allow_headers=["*"],
     allow_credentials=True,
 )
@@ -45,12 +54,110 @@ app.add_middleware(
 class CodeRequest(BaseModel):
     problem_id: str
     code: str
-    user_id: str = "anonymous"  # Optional
-    generate_waveform: bool = False  # New: whether to generate waveform
+    user_id: str = "anonymous"
+    generate_waveform: bool = False
 
-# Load problems
-with open("problems.json", "r") as f:
-    PROBLEMS = json.load(f)
+# Default problems if JSON file is not found
+DEFAULT_PROBLEMS = [
+    {
+        "id": "and_gate",
+        "title": "AND Gate",
+        "description": "Implement a 2-input AND gate: out = a & b",
+        "difficulty": "easy",
+        "category": "Combinational Logic",
+        "template": "module top_module(input a, b, output out);\n  // assign out = a & b;\nendmodule",
+        "testbench": """`timescale 1ns/1ps
+module tb();
+    reg a, b;
+    wire out;
+    integer passed_tests = 0;
+    integer total_tests = 0;
+    
+    top_module dut (.a(a), .b(b), .out(out));
+    
+    initial begin
+        $display("Testing AND gate...");
+        
+        // Test 1
+        a=0; b=0; #10;
+        total_tests = total_tests + 1;
+        if (out !== 1'b0) begin
+            $display("FAIL 00: Expected out=0, Got out=%b", out);
+        end else begin
+            passed_tests = passed_tests + 1;
+        end
+        
+        // Test 2
+        a=0; b=1; #10;
+        total_tests = total_tests + 1;
+        if (out !== 1'b0) begin
+            $display("FAIL 01: Expected out=0, Got out=%b", out);
+        end else begin
+            passed_tests = passed_tests + 1;
+        end
+        
+        // Test 3
+        a=1; b=0; #10;
+        total_tests = total_tests + 1;
+        if (out !== 1'b0) begin
+            $display("FAIL 10: Expected out=0, Got out=%b", out);
+        end else begin
+            passed_tests = passed_tests + 1;
+        end
+        
+        // Test 4
+        a=1; b=1; #10;
+        total_tests = total_tests + 1;
+        if (out !== 1'b1) begin
+            $display("FAIL 11: Expected out=1, Got out=%b", out);
+        end else begin
+            passed_tests = passed_tests + 1;
+        end
+        
+        // Final Result
+        if (passed_tests == total_tests) begin
+            $display("PASS: All %0d tests correct!", total_tests);
+        end else begin
+            $display("FAIL: Passed %0d/%0d tests", passed_tests, total_tests);
+        end
+        $finish;
+    end
+endmodule""",
+        "hint": "Use the & operator: assign out = a & b;"
+    }
+]
+
+# Load problems with error handling
+PROBLEMS = DEFAULT_PROBLEMS
+
+def load_problems():
+    """Load problems from JSON file or use defaults"""
+    global PROBLEMS
+    try:
+        # Try different possible locations
+        possible_paths = [
+            "problems.json",
+            "./problems.json",
+            "/app/problems.json",
+            os.path.join(os.path.dirname(__file__), "problems.json")
+        ]
+        
+        for path in possible_paths:
+            logger.info(f"Trying to load problems from: {path}")
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    PROBLEMS = json.load(f)
+                    logger.info(f"Loaded {len(PROBLEMS)} problems from {path}")
+                    return True
+    except Exception as e:
+        logger.error(f"Failed to load problems.json: {e}")
+        PROBLEMS = DEFAULT_PROBLEMS
+    
+    logger.info(f"Using {len(PROBLEMS)} default problems")
+    return False
+
+# Load problems at startup
+load_problems()
 
 @app.get("/")
 async def root():
@@ -59,81 +166,166 @@ async def root():
 @app.get("/api/problems")
 async def get_problems():
     """Return list of available problems"""
-    import os
-    
-    print(f"DEBUG: Current directory: {os.getcwd()}")
-    print(f"DEBUG: Files in directory: {os.listdir('.')}")
-    
     try:
-        # Try different paths
-        possible_paths = ["problems.json", "./problems.json", "/app/problems.json"]
+        # Try to reload problems
+        load_problems()
         
-        for path in possible_paths:
-            print(f"DEBUG: Trying to open: {path}")
-            if os.path.exists(path):
-                with open(path, "r") as f:
-                    problems = json.load(f)
-                    print(f"DEBUG: Successfully loaded {len(problems)} problems from {path}")
-                    return {"problems": problems}
+        # Return problems with simplified structure for frontend
+        simplified_problems = []
+        for problem in PROBLEMS:
+            simplified = {
+                "id": problem["id"],
+                "title": problem["title"],
+                "description": problem["description"],
+                "difficulty": problem["difficulty"],
+                "category": problem["category"],
+                "template": problem["template"]
+            }
+            simplified_problems.append(simplified)
         
-        print(f"DEBUG: Could not find problems.json in any location")
-        return {"problems": []}
-        
+        return JSONResponse(content={"problems": simplified_problems})
     except Exception as e:
-        print(f"DEBUG: Error loading problems.json: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return {"problems": []}
+        logger.error(f"Error in get_problems: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to load problems", "details": str(e)}
+        )
 
 @app.get("/api/waveform/{waveform_id}")
 async def get_waveform(waveform_id: str):
     """Serve waveform files"""
-    waveform_path = WAVEFORM_DIR / f"{waveform_id}.vcd"
-    svg_path = WAVEFORM_DIR / f"{waveform_id}.svg"
-    
-    if svg_path.exists():
-        return FileResponse(svg_path, media_type="image/svg+xml")
-    elif waveform_path.exists():
-        return FileResponse(waveform_path, media_type="application/octet-stream")
-    else:
-        raise HTTPException(status_code=404, detail="Waveform not found")
+    try:
+        logger.info(f"Requesting waveform: {waveform_id}")
+        
+        # Check for SVG first
+        svg_path = WAVEFORM_DIR / f"{waveform_id}.svg"
+        vcd_path = WAVEFORM_DIR / f"{waveform_id}.vcd"
+        
+        if svg_path.exists():
+            logger.info(f"Serving SVG: {svg_path}")
+            return FileResponse(
+                svg_path,
+                media_type="image/svg+xml",
+                filename=f"{waveform_id}.svg"
+            )
+        elif vcd_path.exists():
+            logger.info(f"Serving VCD: {vcd_path}")
+            return FileResponse(
+                vcd_path,
+                media_type="application/octet-stream",
+                filename=f"{waveform_id}.vcd"
+            )
+        else:
+            logger.warning(f"Waveform not found: {waveform_id}")
+            raise HTTPException(status_code=404, detail="Waveform not found or expired")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving waveform: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/api/run")
 async def run_code(request: CodeRequest):
     """
     Execute Verilog code and return results with optional waveform
     """
-    # 1. Find the problem
-    problem = None
-    for p in PROBLEMS:
-        if p["id"] == request.problem_id:
-            problem = p
-            break
+    try:
+        # 1. Find the problem
+        problem = None
+        for p in PROBLEMS:
+            if p["id"] == request.problem_id:
+                problem = p
+                break
+        
+        if not problem:
+            raise HTTPException(status_code=404, detail="Problem not found")
+        
+        logger.info(f"Running problem: {problem['id']} for user: {request.user_id}")
+        
+        # 2. Run simulation
+        result = run_real_simulation(
+            request.code,
+            problem["testbench"],
+            generate_waveform=request.generate_waveform
+        )
+        
+        # 3. Prepare response
+        response = {
+            "success": result["success"],
+            "problem": problem["title"],
+            "output": result.get("output", ""),
+            "error": result.get("error", ""),
+            "details": result.get("details", ""),
+        }
+        
+        # Add hint if failed
+        if not result["success"] and "hint" in problem:
+            response["hint"] = problem["hint"]
+        
+        # Add waveform info if generated
+        if "waveform_id" in result:
+            response["waveform_id"] = result["waveform_id"]
+            response["waveform_url"] = f"/api/waveform/{result['waveform_id']}"
+            # Also provide direct URLs for convenience
+            response["waveform_vcd_url"] = f"/waveforms/{result['waveform_id']}.vcd"
+            if result.get("waveform_svg", False):
+                response["waveform_svg_url"] = f"/waveforms/{result['waveform_id']}.svg"
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in run_code: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+def modify_testbench_for_waveform(testbench_code: str, vcd_file_path: str) -> str:
+    """
+    Intelligently add $dumpfile and $dumpvars to testbench
+    Returns modified testbench code with waveform dumping
+    """
+    # Check if testbench already has $dumpfile
+    if "$dumpfile" in testbench_code:
+        return testbench_code
     
-    if not problem:
-        raise HTTPException(status_code=404, detail="Problem not found")
+    # Split testbench into lines
+    lines = testbench_code.split('\n')
+    modified_lines = []
     
-    # 2. Run simulation
-    result = run_real_simulation(
-        request.code, 
-        problem["testbench"], 
-        generate_waveform=request.generate_waveform
-    )
+    # Find where to insert dump commands
+    found_initial = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        
+        # Look for 'initial begin' line
+        if "initial begin" in stripped and not found_initial:
+            modified_lines.append(line)
+            # Insert dump commands after initial begin
+            indent = len(line) - len(line.lstrip())
+            indent_str = " " * indent
+            modified_lines.append(f"{indent_str}    $dumpfile(\"{vcd_file_path}\");")
+            modified_lines.append(f"{indent_str}    $dumpvars(0);")
+            found_initial = True
+        else:
+            modified_lines.append(line)
     
-    response = {
-        "success": result["success"],
-        "problem": problem["title"],
-        "output": result.get("output", ""),
-        "error": result.get("error", ""),
-        "hint": problem.get("hint", "") if not result["success"] else ""
-    }
+    # If no initial block found, create one
+    if not found_initial:
+        # Find the module declaration end
+        for i, line in enumerate(lines):
+            if ");" in line and "module" in lines[max(0, i-2):i+1]:
+                # Insert after module declaration
+                indent = len(line) - len(line.lstrip())
+                indent_str = " " * indent
+                modified_lines = lines[:i+1] + [
+                    f"{indent_str}initial begin",
+                    f"{indent_str}    $dumpfile(\"{vcd_file_path}\");",
+                    f"{indent_str}    $dumpvars(0);",
+                    f"{indent_str}end"
+                ] + lines[i+1:]
+                break
     
-    # Add waveform info if generated
-    if "waveform_id" in result:
-        response["waveform_id"] = result["waveform_id"]
-        response["waveform_url"] = f"/api/waveform/{result['waveform_id']}"
-    
-    return response
+    return '\n'.join(modified_lines)
 
 def run_real_simulation(user_code: str, testbench_code: str, generate_waveform: bool = False) -> dict:
     """
@@ -144,218 +336,295 @@ def run_real_simulation(user_code: str, testbench_code: str, generate_waveform: 
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
+        logger.info(f"Running simulation in temp dir: {tmpdir}")
         
-        # 1. Modify testbench to dump VCD if waveform is requested
+        # 1. Check for module name in user code
+        if "module top_module" not in user_code and "module top_module" not in user_code:
+            return {
+                "success": False,
+                "error": "Compilation Error",
+                "details": "Your code must define 'module top_module' exactly.",
+                "type": "compilation"
+            }
+        
+        # 2. Prepare testbench
         if generate_waveform:
-            # Add $dumpfile and $dumpvars to testbench
-            modified_testbench = modify_testbench_for_waveform(testbench_code)
             waveform_id = str(uuid.uuid4())
+            vcd_file_path = str(tmpdir_path / "waveform.vcd")
+            
+            # Modify testbench to include dump commands
+            modified_testbench = modify_testbench_for_waveform(testbench_code, vcd_file_path)
             combined_source = f"""
 `timescale 1ns/1ps
 {user_code}
-{modified_testbench.format(waveform_file=str(tmpdir_path / "waveform.vcd"))}
-            """
+{modified_testbench}
+"""
         else:
             combined_source = f"""
 `timescale 1ns/1ps
 {user_code}
 {testbench_code}
-            """
+"""
         
+        # 3. Write source file
         source_file = tmpdir_path / "design.v"
         source_file.write_text(combined_source)
+        logger.debug(f"Source file written to: {source_file}")
         
-        # 2. Compile with Icarus Verilog
+        # 4. Compile with Icarus Verilog
         output_executable = tmpdir_path / "sim"
-        compile_cmd = ["iverilog", "-o", str(output_executable), str(source_file)]
+        compile_cmd = ["iverilog", "-o", str(output_executable), "-g2012", str(source_file)]
         
         try:
-            # Compile step
+            logger.info(f"Compiling with: {' '.join(compile_cmd)}")
             compile_result = subprocess.run(
                 compile_cmd,
                 capture_output=True,
                 text=True,
-                timeout=15
+                timeout=30
             )
             
             if compile_result.returncode != 0:
+                logger.error(f"Compilation failed: {compile_result.stderr}")
                 return {
                     "success": False,
                     "error": "Compilation Failed",
-                    "details": compile_result.stderr,
+                    "details": compile_result.stderr[:500],
                     "type": "compilation"
                 }
             
-            # 3. Simulate with vvp
+            # 5. Simulate with vvp
+            logger.info(f"Simulating with vvp")
             sim_result = subprocess.run(
                 ["vvp", str(output_executable)],
                 capture_output=True,
                 text=True,
-                timeout=15
+                timeout=30
             )
             
-            # 4. Parse the simulation output
-            output = sim_result.stdout
+            output = sim_result.stdout + sim_result.stderr
+            logger.debug(f"Simulation output: {output[:500]}...")
             
+            # 6. Parse the simulation output
             if "PASS" in output:
                 result = {"success": True, "output": output}
                 
-                # 5. Generate waveform if requested
+                # 7. Generate waveform if requested
                 if generate_waveform and waveform_id:
                     waveform_file = tmpdir_path / "waveform.vcd"
-                    if waveform_file.exists():
+                    if waveform_file.exists() and waveform_file.stat().st_size > 0:
                         # Copy VCD to persistent storage
                         dest_vcd = WAVEFORM_DIR / f"{waveform_id}.vcd"
                         shutil.copy2(waveform_file, dest_vcd)
+                        logger.info(f"Waveform saved: {dest_vcd} ({dest_vcd.stat().st_size} bytes)")
                         
-                        # Generate SVG from VCD using gtkwave
+                        # Try to generate SVG
                         try:
                             svg_file = generate_svg_from_vcd(waveform_file, waveform_id)
-                            if svg_file:
+                            if svg_file and svg_file.exists():
                                 result["waveform_svg"] = True
+                                logger.info(f"SVG generated: {svg_file}")
                         except Exception as e:
-                            print(f"SVG generation failed: {e}")
-                            # Still provide VCD
-                            pass
+                            logger.warning(f"SVG generation failed (VCD still available): {e}")
                         
                         result["waveform_id"] = waveform_id
+                    else:
+                        logger.warning("Waveform file not created or empty during simulation")
                 
                 return result
             else:
                 # Extract error message
-                error_line = next((line for line in output.split('\n') if "FAIL" in line), 
-                                "Simulation output did not contain PASS.")
+                error_lines = [line for line in output.split('\n') if "FAIL" in line or "Error" in line or "error" in line]
+                error_msg = error_lines[0] if error_lines else "Simulation failed"
                 return {
                     "success": False,
                     "error": "Test Failed",
-                    "details": error_line,
-                    "output": output
+                    "details": error_msg,
+                    "output": output[:1000]
                 }
                 
         except subprocess.TimeoutExpired:
-            return {"success": False, "error": "Timeout", "details": "Simulation took too long."}
+            logger.error("Simulation timeout")
+            return {
+                "success": False,
+                "error": "Timeout",
+                "details": "Simulation took too long (30s limit)."
+            }
+        except Exception as e:
+            logger.error(f"Simulation error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": "Simulation Error",
+                "details": str(e)
+            }
 
-def modify_testbench_for_waveform(testbench_code: str) -> str:
-    """
-    Modify testbench to include $dumpfile and $dumpvars commands
-    """
-    # Find the initial block
-    if "initial begin" in testbench_code:
-        # Insert dump commands after initial begin
-        modified = testbench_code.replace(
-            "initial begin",
-            "initial begin\n    $dumpfile(\"{waveform_file}\");\n    $dumpvars(0);"
-        )
-    else:
-        # Create initial block if not present
-        modified = testbench_code
-        if "module" in modified and "endmodule" in modified:
-            # Insert after module declaration but before any other code
-            module_end = modified.find(");") + 2
-            if module_end > 1:
-                modified = modified[:module_end] + "\n    initial begin\n        $dumpfile(\"{waveform_file}\");\n        $dumpvars(0);\n    end" + modified[module_end:]
-    
-    return modified
-
-def generate_svg_from_vcd(vcd_file: Path, waveform_id: str) -> Path:
+def generate_svg_from_vcd(vcd_file: Path, waveform_id: str) -> Optional[Path]:
     """
     Generate SVG waveform from VCD using gtkwave
     """
-    tcl_script = WAVEFORM_DIR / f"{waveform_id}.tcl"
     svg_file = WAVEFORM_DIR / f"{waveform_id}.svg"
     
-    # Create TCL script for gtkwave
-    tcl_content = f"""
-    # Load VCD file
-    gtkwave::loadFile "{vcd_file}"
-    
-    # Set time range
-    gtkwave::setZoomFactor -5
-    
-    # Add all signals
-    set all_signals [gtkwave::getSignals "*"]
-    gtkwave::addSignalsFromList $all_signals
-    
-    # Configure SVG export
-    gtkwave::/Edit/Set_Theme/Classic
-    gtkwave::/View/Show_Grid/On
-    gtkwave::/View/Show_Axis/On
-    
-    # Export to SVG
-    gtkwave::/File/Export_To_SVG "{svg_file}" -flatten
-    
-    # Exit
-    gtkwave::quit
-    """
-
-    
-    tcl_script.write_text(tcl_content)
-    
     try:
-        # Run gtkwave in batch mode with Xvfb (virtual display)
-        subprocess.run([
-            "xvfb-run", "-a", "gtkwave", 
-            "-f", str(vcd_file),
-            "-T", str(tcl_script)
-        ], capture_output=True, text=True, timeout=30)
+        # Create a simple TCL script for gtkwave
+        tcl_content = f'''\
+# Load VCD file
+gtkwave::loadFile "{vcd_file}"
+
+# Add all signals
+set all_signals [gtkwave::getSignals "*"]
+gtkwave::addSignalsFromList $all_signals
+
+# Set time range to show all
+gtkwave::setZoomFactor -5
+gtkwave::/View/Show_Grid/On
+gtkwave::/View/Show_Axis/On
+
+# Export to SVG
+gtkwave::/File/Export_To_SVG "{svg_file}" -flatten
+
+# Exit
+gtkwave::exit
+'''
         
-        if svg_file.exists():
+        # Write TCL script
+        tcl_file = WAVEFORM_DIR / f"{waveform_id}.tcl"
+        tcl_file.write_text(tcl_content)
+        
+        # Run gtkwave with xvfb-run if available (for headless servers)
+        cmd = []
+        
+        # Check if xvfb-run is available
+        try:
+            subprocess.run(["which", "xvfb-run"], capture_output=True, check=True)
+            cmd = ["xvfb-run", "-a"]
+        except:
+            pass
+        
+        cmd.extend(["gtkwave", "-T", str(tcl_file)])
+        
+        logger.info(f"Running GTKWave: {' '.join(cmd)}")
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        if result.returncode != 0:
+            logger.warning(f"GTKWave failed: {result.stderr}")
+        
+        if svg_file.exists() and svg_file.stat().st_size > 100:  # At least 100 bytes
             return svg_file
+        else:
+            logger.warning("SVG file not created or too small by GTKWave")
+            return None
+            
     except Exception as e:
-        print(f"GTKWave error: {e}")
-    
-    return None
+        logger.error(f"Error in generate_svg_from_vcd: {e}")
+        return None
 
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
-    # Test if iverilog and gtkwave are available
-    tools_available = True
+    tools_status = {}
     missing_tools = []
     
-    for tool in ["iverilog", "vvp", "gtkwave", "xvfb-run"]:
+    # Check required tools
+    for tool in ["iverilog", "vvp"]:
         try:
-            subprocess.run([tool, "--version"], capture_output=True, timeout=5)
+            result = subprocess.run([tool, "--version"], 
+                                  capture_output=True, 
+                                  text=True,
+                                  timeout=5)
+            tools_status[tool] = "available"
+            if result.stdout:
+                tools_status[f"{tool}_version"] = result.stdout.split('\n')[0]
         except (subprocess.SubprocessError, FileNotFoundError):
-            tools_available = False
+            tools_status[tool] = "missing"
             missing_tools.append(tool)
     
+    # Check optional tools
+    for tool in ["gtkwave", "xvfb-run"]:
+        try:
+            subprocess.run(["which", tool], 
+                         capture_output=True, 
+                         timeout=5)
+            tools_status[tool] = "available"
+        except:
+            tools_status[tool] = "optional"
+    
+    status = "healthy" if "iverilog" in tools_status and tools_status["iverilog"] == "available" else "degraded"
+    
     return {
-        "status": "healthy" if tools_available else "degraded",
-        "tools_available": tools_available,
+        "status": status,
+        "tools": tools_status,
         "missing_tools": missing_tools,
         "waveform_dir": str(WAVEFORM_DIR),
-        "problems_count": len(PROBLEMS)
+        "problems_count": len(PROBLEMS),
+        "waveform_files": len(list(WAVEFORM_DIR.glob("*.vcd"))) + len(list(WAVEFORM_DIR.glob("*.svg")))
     }
 
-# Clean old waveform files periodically (older than 1 hour)
+@app.delete("/api/waveforms")
+async def cleanup_waveforms():
+    """Cleanup all waveform files"""
+    try:
+        deleted = 0
+        for file in WAVEFORM_DIR.glob("*"):
+            if file.is_file():
+                file.unlink()
+                deleted += 1
+        return {"message": f"Deleted {deleted} waveform files"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Clean old waveform files periodically
 import time
-def cleanup_old_waveforms():
-    """Cleanup old waveform files"""
-    current_time = time.time()
-    for file in WAVEFORM_DIR.glob("*"):
-        if file.is_file():
-            file_age = current_time - file.stat().st_mtime
-            if file_age > 3600:  # 1 hour
-                try:
-                    file.unlink()
-                except:
-                    pass
+import asyncio
+
+async def cleanup_old_wavefiles():
+    """Cleanup old waveform files (older than 1 hour)"""
+    try:
+        current_time = time.time()
+        deleted = 0
+        for file in WAVEFORM_DIR.glob("*"):
+            if file.is_file():
+                file_age = current_time - file.stat().st_mtime
+                if file_age > 3600:  # 1 hour
+                    try:
+                        file.unlink()
+                        deleted += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to delete {file}: {e}")
+        
+        if deleted > 0:
+            logger.info(f"Cleaned up {deleted} old waveform files")
+    except Exception as e:
+        logger.error(f"Error in cleanup: {e}")
 
 @app.on_event("startup")
 async def startup_event():
-    """Cleanup on startup"""
-    cleanup_old_waveforms()
+    """Cleanup on startup and schedule periodic cleanup"""
+    await cleanup_old_wavefiles()
+    # Schedule periodic cleanup every hour
+    asyncio.create_task(periodic_cleanup())
+
+async def periodic_cleanup():
+    """Periodic cleanup task"""
+    while True:
+        await asyncio.sleep(3600)  # 1 hour
+        await cleanup_old_wavefiles()
 
 import os
 PORT = int(os.environ.get("PORT", 8000))
 
 if __name__ == "__main__":
     import uvicorn
+    logger.info(f"Starting server on port {PORT}")
     uvicorn.run(
-        app, 
-        host="0.0.0.0", 
+        app,
+        host="0.0.0.0",
         port=PORT,
-        access_log=False,
+        log_level="info",
         timeout_keep_alive=30,
     )

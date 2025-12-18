@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Backend API for VLSI Practice - Simple & Professional
+Backend API for VLSI Practice - Fixed Waveform Viewer
 """
 
 from fastapi import FastAPI, HTTPException
@@ -149,7 +149,7 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
             if "$dumpfile" not in testbench:
                 testbench = testbench.replace(
                     "initial begin",
-                    "initial begin\n    $dumpfile(\"" + vcd_path + "\");\n    $dumpvars(0);"
+                    f"initial begin\n    $dumpfile(\"{vcd_path}\");\n    $dumpvars(0);"
                 )
         
         # Combine source
@@ -195,10 +195,6 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
                     import shutil
                     shutil.copy2(vcd_file, dest_vcd)
                     
-                    # Parse VCD for preview
-                    vcd_content = vcd_file.read_text()
-                    parse_vcd_for_preview(waveform_id, vcd_content)
-                    
                     logger.info(f"Waveform saved: {waveform_id}")
                     result["waveform_id"] = waveform_id
             
@@ -210,42 +206,11 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
                 "output": output[:1000]
             }
 
-def parse_vcd_for_preview(waveform_id: str, vcd_content: str):
-    """Parse VCD to create a preview JSON"""
+def parse_vcd_signals(vcd_path: Path) -> tuple:
+    """Parse VCD file to extract signal information and waveform data"""
     signals = []
+    waveform_data = {}
     timescale = "1ns"
-    
-    # Parse VCD
-    for line in vcd_content.split('\n'):
-        line = line.strip()
-        if line.startswith('$timescale'):
-            parts = line.split()
-            if len(parts) > 1:
-                timescale = parts[1]
-        elif line.startswith('$var'):
-            parts = line.split()
-            if len(parts) >= 5:
-                signals.append({
-                    "id": parts[3],
-                    "name": parts[4],
-                    "type": parts[1],
-                    "width": parts[2]
-                })
-    
-    # Save preview data
-    preview_data = {
-        "waveform_id": waveform_id,
-        "signals": signals[:10],  # First 10 signals
-        "timescale": timescale,
-        "generated_at": datetime.now().isoformat()
-    }
-    
-    preview_path = WAVEFORM_DIR / f"{waveform_id}_preview.json"
-    preview_path.write_text(json.dumps(preview_data, indent=2))
-
-def parse_vcd_signals(vcd_path: Path) -> list:
-    """Parse VCD file to extract signal information"""
-    signals = []
     
     try:
         with open(vcd_path, 'r') as f:
@@ -253,9 +218,15 @@ def parse_vcd_signals(vcd_path: Path) -> list:
         
         lines = content.split('\n')
         
-        for line in lines:
+        # Parse signals and timescale
+        signal_map = {}
+        for i, line in enumerate(lines):
             line = line.strip()
-            if line.startswith('$var'):
+            if line.startswith('$timescale'):
+                parts = line.split()
+                if len(parts) > 1:
+                    timescale = parts[1]
+            elif line.startswith('$var'):
                 parts = line.split()
                 if len(parts) >= 5:
                     signal_type = parts[1]
@@ -267,6 +238,7 @@ def parse_vcd_signals(vcd_path: Path) -> list:
                     if signal_name.endswith('$end'):
                         signal_name = signal_name[:-4].strip()
                     
+                    signal_map[signal_id] = signal_name
                     signals.append({
                         'id': signal_id,
                         'name': signal_name,
@@ -274,19 +246,65 @@ def parse_vcd_signals(vcd_path: Path) -> list:
                         'width': width,
                         'color': f"#{hash(signal_name) % 0xffffff:06x}"
                     })
-                    
-                    # Limit to 10 signals for performance
-                    if len(signals) >= 10:
-                        break
         
-        # If no signals found, add default signals
-        if not signals:
-            signals = [
-                {'id': '!', 'name': 'clk', 'type': 'wire', 'width': '1', 'color': '#ff6b6b'},
-                {'id': '"', 'name': 'a', 'type': 'wire', 'width': '1', 'color': '#4ecdc4'},
-                {'id': '#', 'name': 'b', 'type': 'wire', 'width': '1', 'color': '#ffd166'},
-                {'id': '$', 'name': 'out', 'type': 'wire', 'width': '1', 'color': '#06d6a0'},
-            ]
+        # Parse actual waveform data
+        current_time = 0
+        signal_states = {signal_id: 'x' for signal_id in signal_map.keys()}
+        timeline = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            if line.startswith('#'):
+                # Time change
+                try:
+                    time_val = int(line[1:])
+                    if time_val != current_time:
+                        # Record state at previous time
+                        timeline.append({
+                            'time': current_time,
+                            'states': signal_states.copy()
+                        })
+                        current_time = time_val
+                except:
+                    continue
+            elif line[0] in ['0', '1', 'x', 'z'] and len(line) > 1:
+                # Signal value change
+                value = line[0]
+                signal_id = line[1:]
+                if signal_id in signal_states:
+                    signal_states[signal_id] = value
+            elif line[0] in ['b', 'B']:
+                # Bus value change
+                parts = line.split()
+                if len(parts) >= 2:
+                    value = parts[0][1:]  # Remove 'b' prefix
+                    signal_id = parts[1]
+                    if signal_id in signal_states:
+                        signal_states[signal_id] = value
+        
+        # Add final state
+        if timeline:
+            timeline.append({
+                'time': current_time,
+                'states': signal_states.copy()
+            })
+        
+        # Convert to waveform data format
+        for signal_id, signal_name in signal_map.items():
+            waveform = []
+            for timepoint in timeline:
+                waveform.append({
+                    'time': timepoint['time'],
+                    'value': timepoint['states'][signal_id]
+                })
+            waveform_data[signal_name] = waveform
+        
+        # Limit signals for performance
+        if len(signals) > 10:
+            signals = signals[:10]
         
     except Exception as e:
         logger.error(f"Failed to parse VCD: {e}")
@@ -298,22 +316,27 @@ def parse_vcd_signals(vcd_path: Path) -> list:
             {'id': '$', 'name': 'out', 'type': 'wire', 'width': '1', 'color': '#06d6a0'},
         ]
     
-    return signals
+    return signals, waveform_data, timescale
+
 def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
     """Create professional HTML viewer with actual waveform display"""
     
-    # Read VCD file to extract signals
+    # Parse VCD file
     signals_data = []
+    waveform_data = {}
+    timescale = "1ns"
     vcd_path = WAVEFORM_DIR / f"{waveform_id}.vcd"
     
     if vcd_exists and vcd_path.exists():
         try:
-            signals_data = parse_vcd_signals(vcd_path)
-        except:
+            signals_data, waveform_data, timescale = parse_vcd_signals(vcd_path)
+        except Exception as e:
+            logger.error(f"Error parsing VCD: {e}")
             signals_data = []
     
-    # Convert signals to JSON for JavaScript
+    # Convert data to JSON for JavaScript
     signals_json = json.dumps(signals_data)
+    waveform_json = json.dumps(waveform_data)
     
     return f'''<!DOCTYPE html>
 <html lang="en">
@@ -374,6 +397,8 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
             border-radius: 12px;
             padding: 20px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            max-height: 600px;
+            overflow-y: auto;
         }}
         
         .signal-list-panel h3 {{
@@ -382,6 +407,10 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
             color: #333;
             padding-bottom: 10px;
             border-bottom: 2px solid #f0f0f0;
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 1;
         }}
         
         .signal-item {{
@@ -491,9 +520,100 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
             min-height: 400px;
         }}
         
-        #waveform-canvas {{
+        #waveform-container {{
+            position: relative;
+            min-height: 400px;
+            overflow-x: auto;
+        }}
+        
+        .waveform-grid {{
+            position: relative;
+            padding-top: 40px;
+            padding-left: 100px;
+        }}
+        
+        .signal-row {{
+            position: relative;
+            height: 60px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #333;
+        }}
+        
+        .signal-label {{
+            position: absolute;
+            left: -100px;
+            top: 20px;
+            width: 90px;
+            text-align: right;
+            color: white;
+            font-family: monospace;
+            font-weight: bold;
+        }}
+        
+        .signal-waveform {{
+            position: relative;
+            height: 100%;
+        }}
+        
+        .time-grid {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            border-bottom: 2px solid #444;
+        }}
+        
+        .time-marker {{
+            position: absolute;
+            top: 0;
+            width: 1px;
+            height: 10px;
+            background: #666;
+        }}
+        
+        .time-label {{
+            position: absolute;
+            top: 12px;
+            color: #888;
+            font-size: 12px;
+            transform: translateX(-50%);
+            white-space: nowrap;
+        }}
+        
+        .waveform-line {{
+            position: absolute;
+            height: 3px;
+            background: #ff6b6b;
+            top: 50%;
+            transform: translateY(-50%);
+            transition: background-color 0.3s;
+        }}
+        
+        .waveform-transition {{
+            position: absolute;
+            width: 1px;
+            background: #888;
+            top: 30%;
+            bottom: 30%;
+        }}
+        
+        .waveform-value {{
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            color: white;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 2px 4px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 3px;
+            z-index: 10;
+            display: none;
+        }}
+        
+        .waveform-line:hover + .waveform-value {{
             display: block;
-            background: #1a1a1a;
         }}
         
         .time-scale {{
@@ -591,6 +711,30 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
             color: #666;
         }}
         
+        .cursor-line {{
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: #00ff00;
+            z-index: 100;
+            pointer-events: none;
+            display: none;
+        }}
+        
+        .cursor-time {{
+            position: absolute;
+            top: -25px;
+            background: #00ff00;
+            color: black;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+            transform: translateX(-50%);
+            pointer-events: none;
+        }}
+        
         .footer {{
             text-align: center;
             padding: 20px;
@@ -639,14 +783,14 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
         <!-- Header -->
         <div class="header">
             <h1><i class="fas fa-wave-square"></i> Digital Waveform Viewer</h1>
-            <div class="subtitle">Waveform ID: {waveform_id} • Real-time signal visualization</div>
+            <div class="subtitle">Waveform ID: {waveform_id} • Timescale: {timescale} • {len(signals_data)} signals</div>
         </div>
         
         <!-- Main Waveform Area -->
         <div class="waveform-container">
             <!-- Signal List -->
             <div class="signal-list-panel">
-                <h3><i class="fas fa-list"></i> Signals ({len(signals_data)})</h3>
+                <h3><i class="fas fa-list"></i> Signals</h3>
                 <div id="signal-list">
                     <!-- Signals will be populated by JavaScript -->
                 </div>
@@ -670,7 +814,12 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
                 </div>
                 
                 <div class="waveform-display">
-                    <canvas id="waveform-canvas" width="1200" height="400"></canvas>
+                    <div id="waveform-container">
+                        <div class="cursor-line" id="cursor-line">
+                            <div class="cursor-time" id="cursor-time"></div>
+                        </div>
+                        <div id="waveform-grid" class="waveform-grid"></div>
+                    </div>
                 </div>
                 
                 <div class="time-scale" id="time-scale">
@@ -699,8 +848,8 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
                     </div>
                 </div>
                 <div class="info-item">
-                    <div class="info-label">Signals Detected</div>
-                    <div class="info-value">{len(signals_data)} signals</div>
+                    <div class="info-label">Timescale</div>
+                    <div class="info-value">{timescale}</div>
                 </div>
             </div>
             
@@ -727,50 +876,62 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #ffd166;"></div>
-                    <div class="legend-text">Clock</div>
+                    <div class="legend-text">Unknown (x)</div>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #06d6a0;"></div>
-                    <div class="legend-text">Data</div>
+                    <div class="legend-text">High-Z (z)</div>
                 </div>
             </div>
         </div>
         
         <!-- Footer -->
         <div class="footer">
-            <p>© 2024 VLSI Practice Platform • <a href="/">Back to Editor</a> • Use mouse wheel to zoom, drag to pan</p>
+            <p>© 2024 VLSI Practice Platform • <a href="/">Back to Editor</a> • Click and drag to pan, scroll to zoom</p>
         </div>
     </div>
     
     <script>
         // Waveform data from backend
         const signalsData = {signals_json};
+        const waveformData = {waveform_json};
+        const timescale = "{timescale}";
+        
         let zoomLevel = 1.0;
+        let panOffset = 0;
         let selectedSignals = [];
+        let maxTime = 100; // Default max time
+        let timeScale = 10; // Pixels per time unit
+        const colors = ['#ff6b6b', '#4ecdc4', '#ffd166', '#06d6a0', '#118ab2', '#ef476f', '#7209b7'];
         
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {{
             renderSignalList();
-            drawWaveform();
-            renderTimeScale();
-            
-            // Add mouse wheel zoom
-            document.getElementById('waveform-canvas').addEventListener('wheel', function(e) {{
-                e.preventDefault();
-                if (e.deltaY < 0) {{
-                    zoomIn();
-                }} else {{
-                    zoomOut();
-                }}
-            }});
+            calculateMaxTime();
+            renderWaveform();
+            setupMouseInteractions();
         }});
+        
+        function calculateMaxTime() {{
+            maxTime = 0;
+            for (const signalName in waveformData) {{
+                const waveform = waveformData[signalName];
+                if (waveform.length > 0) {{
+                    const lastTime = waveform[waveform.length - 1].time;
+                    if (lastTime > maxTime) {{
+                        maxTime = lastTime;
+                    }}
+                }}
+            }}
+            // Add some padding
+            maxTime = Math.ceil(maxTime / 10) * 10 + 10;
+        }}
         
         function renderSignalList() {{
             const container = document.getElementById('signal-list');
             container.innerHTML = '';
             
             signalsData.forEach((signal, index) => {{
-                const colors = ['#ff6b6b', '#4ecdc4', '#ffd166', '#06d6a0', '#118ab2', '#ef476f', '#7209b7'];
                 const color = colors[index % colors.length];
                 
                 const div = document.createElement('div');
@@ -784,7 +945,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
                 container.appendChild(div);
                 
                 // Auto-select first few signals
-                if (index < 3) {{
+                if (index < 6) {{
                     selectedSignals.push(signal.name);
                     div.classList.add('active');
                 }}
@@ -811,144 +972,263 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
                 }});
             }}
             
-            drawWaveform();
+            renderWaveform();
         }}
         
-        function drawWaveform() {{
-            const canvas = document.getElementById('waveform-canvas');
-            const ctx = canvas.getContext('2d');
+        function renderWaveform() {{
+            const container = document.getElementById('waveform-grid');
+            container.innerHTML = '';
             
-            // Clear canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Clear cursor
+            document.getElementById('cursor-line').style.display = 'none';
             
-            // Draw background grid
-            drawGrid(ctx, canvas.width, canvas.height);
+            // Create time grid
+            const timeGrid = document.createElement('div');
+            timeGrid.className = 'time-grid';
+            container.appendChild(timeGrid);
+            
+            // Add time markers
+            const timeStep = Math.max(10, Math.ceil(maxTime / 20));
+            for (let time = 0; time <= maxTime; time += timeStep) {{
+                const x = panOffset + (time * timeScale * zoomLevel);
+                
+                const marker = document.createElement('div');
+                marker.className = 'time-marker';
+                marker.style.left = x + 'px';
+                
+                const label = document.createElement('div');
+                label.className = 'time-label';
+                label.textContent = time + ' ' + timescale;
+                label.style.left = x + 'px';
+                
+                timeGrid.appendChild(marker);
+                timeGrid.appendChild(label);
+            }}
             
             if (selectedSignals.length === 0) {{
                 // Show message if no signals selected
-                ctx.fillStyle = '#666';
-                ctx.font = '16px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('Select signals from the left panel to view waveforms', canvas.width / 2, canvas.height / 2);
+                const message = document.createElement('div');
+                message.style.position = 'absolute';
+                message.style.top = '50%';
+                message.style.left = '50%';
+                message.style.transform = 'translate(-50%, -50%)';
+                message.style.color = '#666';
+                message.style.fontSize = '16px';
+                message.textContent = 'Select signals from the left panel to view waveforms';
+                container.appendChild(message);
                 return;
             }}
             
-            // Draw each selected signal
-            const signalHeight = 60;
-            const verticalSpacing = 20;
-            const startY = 50;
-            
+            // Render each selected signal
             selectedSignals.forEach((signalName, signalIndex) => {{
                 const signal = signalsData.find(s => s.name === signalName);
-                if (!signal) return;
+                if (!signal || !waveformData[signalName]) return;
                 
-                const y = startY + (signalIndex * (signalHeight + verticalSpacing));
+                // Create signal row
+                const row = document.createElement('div');
+                row.className = 'signal-row';
+                row.id = 'signal-row-' + signalName;
                 
-                // Draw signal label
-                ctx.fillStyle = '#fff';
-                ctx.font = '14px Arial';
-                ctx.textAlign = 'left';
-                ctx.fillText(signal.name, 20, y + signalHeight / 2 + 5);
+                // Signal label
+                const label = document.createElement('div');
+                label.className = 'signal-label';
+                label.textContent = signalName;
+                label.style.color = colors[signalIndex % colors.length];
+                row.appendChild(label);
                 
-                // Draw signal waveform
-                drawSignalWaveform(ctx, signal, y, signalHeight, signalIndex);
+                // Waveform container
+                const waveformContainer = document.createElement('div');
+                waveformContainer.className = 'signal-waveform';
+                row.appendChild(waveformContainer);
+                
+                container.appendChild(row);
+                
+                // Draw waveform
+                drawSignalWaveform(signalName, waveformContainer, signalIndex);
             }});
         }}
         
-        function drawGrid(ctx, width, height) {{
-            ctx.strokeStyle = '#333';
-            ctx.lineWidth = 1;
+        function drawSignalWaveform(signalName, container, colorIndex) {{
+            const waveform = waveformData[signalName];
+            if (!waveform || waveform.length === 0) return;
             
-            // Vertical lines (time grid)
-            for (let x = 100; x < width; x += 50 * zoomLevel) {{
-                ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, height);
-                ctx.stroke();
-            }}
-            
-            // Horizontal lines
-            for (let y = 50; y < height; y += 50) {{
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(width, y);
-                ctx.stroke();
-            }}
-        }}
-        
-        function drawSignalWaveform(ctx, signal, y, height, colorIndex) {{
-            const colors = ['#ff6b6b', '#4ecdc4', '#ffd166', '#06d6a0', '#118ab2'];
             const color = colors[colorIndex % colors.length];
             
-            const totalTime = 100; // 100ns total time
-            const timePerPixel = totalTime / (1000 * zoomLevel);
-            const startX = 100;
+            // Sort waveform by time
+            waveform.sort((a, b) => a.time - b.time);
             
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2;
-            ctx.fillStyle = color;
+            let lastX = null;
+            let lastValue = null;
             
-            // Draw signal line
-            ctx.beginPath();
-            ctx.moveTo(startX, y + height / 2);
-            
-            // Draw simulated waveform (in real app, parse actual VCD data)
-            for (let i = 0; i < 10; i++) {{
-                const x = startX + (i * 80 * zoomLevel);
-                const isHigh = i % 2 === 0;
-                const signalY = y + (isHigh ? height * 0.25 : height * 0.75);
+            for (let i = 0; i < waveform.length; i++) {{
+                const point = waveform[i];
+                const nextPoint = waveform[i + 1];
+                const x = panOffset + (point.time * timeScale * zoomLevel);
                 
-                // Horizontal line
-                ctx.lineTo(x, signalY);
+                // Draw horizontal line for current value
+                if (lastX !== null) {{
+                    const line = document.createElement('div');
+                    line.className = 'waveform-line';
+                    line.style.left = lastX + 'px';
+                    line.style.width = (x - lastX) + 'px';
+                    line.style.top = lastValue === '1' ? '25%' : lastValue === '0' ? '75%' : '50%';
+                    line.style.height = lastValue === '1' || lastValue === '0' ? '3px' : '1px';
+                    
+                    if (lastValue === '1') {{
+                        line.style.background = '#ff6b6b';
+                    }} else if (lastValue === '0') {{
+                        line.style.background = '#4ecdc4';
+                    }} else if (lastValue === 'z') {{
+                        line.style.background = '#06d6a0';
+                        line.style.borderTop = '1px dashed #06d6a0';
+                        line.style.borderBottom = '1px dashed #06d6a0';
+                        line.style.height = '5px';
+                    }} else {{
+                        line.style.background = '#ffd166';
+                        line.style.borderTop = '1px dashed #ffd166';
+                        line.style.borderBottom = '1px dashed #ffd166';
+                        line.style.height = '5px';
+                    }}
+                    
+                    // Add hover tooltip
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'waveform-value';
+                    tooltip.textContent = lastValue;
+                    tooltip.style.left = (lastX + (x - lastX) / 2) + 'px';
+                    line.appendChild(tooltip);
+                    
+                    container.appendChild(line);
+                }}
                 
-                // Vertical transition
-                ctx.lineTo(x, y + (isHigh ? height * 0.75 : height * 0.25));
+                // Draw vertical transition line if value changes
+                if (nextPoint && point.value !== nextPoint.value) {{
+                    const transition = document.createElement('div');
+                    transition.className = 'waveform-transition';
+                    transition.style.left = x + 'px';
+                    transition.style.background = '#888';
+                    container.appendChild(transition);
+                }}
+                
+                lastX = x;
+                lastValue = point.value;
             }}
             
-            ctx.stroke();
-            
-            // Draw value markers
-            for (let i = 0; i < 10; i++) {{
-                const x = startX + (i * 80 * zoomLevel);
-                const isHigh = i % 2 === 0;
-                const value = isHigh ? '1' : '0';
+            // Draw final segment to maxTime
+            if (lastX !== null) {{
+                const finalX = panOffset + (maxTime * timeScale * zoomLevel);
+                const line = document.createElement('div');
+                line.className = 'waveform-line';
+                line.style.left = lastX + 'px';
+                line.style.width = (finalX - lastX) + 'px';
+                line.style.top = lastValue === '1' ? '25%' : lastValue === '0' ? '75%' : '50%';
+                line.style.height = lastValue === '1' || lastValue === '0' ? '3px' : '1px';
                 
-                ctx.fillStyle = isHigh ? '#ff6b6b' : '#4ecdc4';
-                ctx.beginPath();
-                ctx.arc(x, y + (isHigh ? height * 0.25 : height * 0.75), 4, 0, Math.PI * 2);
-                ctx.fill();
+                if (lastValue === '1') {{
+                    line.style.background = '#ff6b6b';
+                }} else if (lastValue === '0') {{
+                    line.style.background = '#4ecdc4';
+                }} else if (lastValue === 'z') {{
+                    line.style.background = '#06d6a0';
+                    line.style.borderTop = '1px dashed #06d6a0';
+                    line.style.borderBottom = '1px dashed #06d6a0';
+                    line.style.height = '5px';
+                }} else {{
+                    line.style.background = '#ffd166';
+                    line.style.borderTop = '1px dashed #ffd166';
+                    line.style.borderBottom = '1px dashed #ffd166';
+                    line.style.height = '5px';
+                }}
                 
-                // Draw value text
-                ctx.fillStyle = '#fff';
-                ctx.font = '12px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(value, x, y + (isHigh ? height * 0.15 : height * 0.85));
+                container.appendChild(line);
             }}
         }}
         
-        function renderTimeScale() {{
-            const container = document.getElementById('time-scale');
-            container.innerHTML = '';
+        function setupMouseInteractions() {{
+            const container = document.getElementById('waveform-container');
+            let isDragging = false;
+            let startX = 0;
             
-            for (let time = 0; time <= 100; time += 20) {{
-                const div = document.createElement('div');
-                div.style.position = 'relative';
-                div.style.left = `${{100 + (time * 8 * zoomLevel)}}px`;
-                div.textContent = `${{time}}ns`;
-                container.appendChild(div);
-            }}
+            container.addEventListener('mousedown', (e) => {{
+                isDragging = true;
+                startX = e.clientX - panOffset;
+                container.style.cursor = 'grabbing';
+            }});
+            
+            container.addEventListener('mousemove', (e) => {{
+                if (isDragging) {{
+                    panOffset = e.clientX - startX;
+                    renderWaveform();
+                    
+                    // Show cursor with time
+                    const rect = container.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const cursorLine = document.getElementById('cursor-line');
+                    const cursorTime = document.getElementById('cursor-time');
+                    
+                    const time = Math.round((x - panOffset) / (timeScale * zoomLevel));
+                    if (time >= 0 && time <= maxTime) {{
+                        cursorLine.style.left = x + 'px';
+                        cursorLine.style.display = 'block';
+                        cursorTime.textContent = time + ' ' + timescale;
+                        cursorTime.style.left = x + 'px';
+                    }} else {{
+                        cursorLine.style.display = 'none';
+                    }}
+                }}
+            }});
+            
+            container.addEventListener('mouseup', () => {{
+                isDragging = false;
+                container.style.cursor = 'default';
+            }});
+            
+            container.addEventListener('wheel', (e) => {{
+                e.preventDefault();
+                const rect = container.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseTime = (mouseX - panOffset) / (timeScale * zoomLevel);
+                
+                if (e.deltaY < 0) {{
+                    zoomLevel = Math.min(zoomLevel * 1.2, 5.0);
+                }} else {{
+                    zoomLevel = Math.max(zoomLevel / 1.2, 0.5);
+                }}
+                
+                // Keep mouse position fixed
+                panOffset = mouseX - (mouseTime * timeScale * zoomLevel);
+                
+                renderWaveform();
+            }});
+            
+            // Show cursor on hover
+            container.addEventListener('mousemove', (e) => {{
+                if (!isDragging) {{
+                    const rect = container.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const cursorLine = document.getElementById('cursor-line');
+                    const cursorTime = document.getElementById('cursor-time');
+                    
+                    const time = Math.round((x - panOffset) / (timeScale * zoomLevel));
+                    if (time >= 0 && time <= maxTime) {{
+                        cursorLine.style.left = x + 'px';
+                        cursorLine.style.display = 'block';
+                        cursorTime.textContent = time + ' ' + timescale;
+                        cursorTime.style.left = x + 'px';
+                    }} else {{
+                        cursorLine.style.display = 'none';
+                    }}
+                }}
+            }});
         }}
         
         function zoomIn() {{
             zoomLevel = Math.min(zoomLevel * 1.2, 5.0);
-            drawWaveform();
-            renderTimeScale();
+            renderWaveform();
         }}
         
         function zoomOut() {{
             zoomLevel = Math.max(zoomLevel / 1.2, 0.5);
-            drawWaveform();
-            renderTimeScale();
+            renderWaveform();
         }}
         
         function refreshViewer() {{
@@ -962,13 +1242,19 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
         }}
         
         function takeScreenshot() {{
-            const canvas = document.getElementById('waveform-canvas');
-            const link = document.createElement('a');
-            link.download = 'waveform-{waveform_id}.png';
-            link.href = canvas.toDataURL('image/png');
-            link.click();
+            const container = document.getElementById('waveform-container');
+            html2canvas(container, {{
+                backgroundColor: '#1a1a1a',
+                scale: 2
+            }}).then(canvas => {{
+                const link = document.createElement('a');
+                link.download = 'waveform-{waveform_id}.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }});
         }}
     </script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 </body>
 </html>'''
     

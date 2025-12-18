@@ -563,21 +563,25 @@ async def health_check():
 
 @app.get("/api/admin/waveforms")
 async def list_waveforms(limit: int = 10):
-    """List all waveforms in database (admin)"""
     if not waveforms_collection:
         return {"error": "Database not available"}
-    
+
     waveforms = []
     async for doc in waveforms_collection.find().sort("created_at", -1).limit(limit):
         waveforms.append({
             "id": doc.get("waveform_id"),
-            "created": doc.get("created_at"),
-            "expires": doc.get("expires_at"),
+            "created": doc.get("created_at").isoformat() if doc.get("created_at") else None,
+            "expires": doc.get("expires_at").isoformat() if doc.get("expires_at") else None,
             "size": doc.get("metadata", {}).get("size_bytes", 0),
             "problem": doc.get("metadata", {}).get("problem", "Unknown")
         })
-    
-    return {"waveforms": waveforms, "total": await waveforms_collection.count_documents({})}
+
+    total = await waveforms_collection.count_documents({})
+
+    return {
+        "waveforms": waveforms,
+        "total": total
+    }
 
 @app.delete("/api/admin/waveforms/{waveform_id}")
 async def delete_waveform(waveform_id: str):

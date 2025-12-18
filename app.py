@@ -28,7 +28,7 @@ app = FastAPI(title="VLSI Practice API")
 
 # MongoDB configuration
 MONGODB_URL = os.environ.get("MONGODB_URI", "mongodb+srv://teddugovardhan544_db_user:WVjIA96jQ31net0j@cluster0.kwkkleo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
-DATABASE_NAME = os.environ.get("MONGODB_DB", "vlsipractice")
+DATABASE_NAME = os.environ.get("MONGODB_DB", "Cluster0")
 
 # Initialize MongoDB client
 try:

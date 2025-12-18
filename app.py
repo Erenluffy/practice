@@ -20,8 +20,6 @@ from pathlib import Path
 
 # MongoDB imports
 import motor.motor_asyncio
-from bson import Binary
-import base64
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -29,7 +27,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VLSI Practice API")
 
-# MongoDB configuration
+# MongoDB configuration - REMOVE YOUR PASSWORD FROM CODE!
+# Get from environment variable instead
 MONGODB_URL = os.environ.get("MONGODB_URI", "mongodb+srv://teddugovardhan544_db_user:WVjIA96jQ31net0j@cluster0.kwkkleo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 DATABASE_NAME = os.environ.get("MONGODB_DB", "Cluster0")
 WAVEFORM_COLLECTION = "waveforms"
@@ -60,14 +59,6 @@ class CodeRequest(BaseModel):
     code: str
     user_id: str = "anonymous"
     generate_waveform: bool = False
-
-class WaveformData(BaseModel):
-    waveform_id: str
-    vcd_content: str
-    html_content: str
-    created_at: datetime
-    expires_at: datetime
-    metadata: Dict[str, Any]
 
 # Load problems
 PROBLEMS = []
@@ -293,6 +284,9 @@ def create_waveform_html(waveform_id: str, vcd_preview: str = "") -> str:
     
     signal_list = ', '.join(signals[:5])  # Show first 5 signals
     
+    # Create the HTML with proper escaping
+    vcd_preview_display = vcd_preview[:500] if vcd_preview else ""
+    
     html = f'''<!DOCTYPE html>
 <html>
 <head>
@@ -492,15 +486,17 @@ def create_waveform_html(waveform_id: str, vcd_preview: str = "") -> str:
                 <li>Open it with GTKWave (desktop application)</li>
                 <li>Or use online VCD viewers like Wavedrom</li>
                 <li>For quick viewing, paste the VCD content into online tools</li>
-            </ol>
-            
-            {f'''
+            </ol>'''
+    
+    # Add VCD preview section if we have content
+    if vcd_preview_display:
+        html += f'''
             <h3><i class="fas fa-eye"></i> VCD Preview (first 500 chars):</h3>
             <div class="waveform-preview">
-                <pre>{vcd_preview[:500]}</pre>
-            </div>
-            ''' if vcd_preview else ''}
-            
+                <pre>{vcd_preview_display}</pre>
+            </div>'''
+    
+    html += f'''
             <h3><i class="fas fa-microchip"></i> Recommended Tools:</h3>
             <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">
                 <span class="signal-badge">GTKWave</span>

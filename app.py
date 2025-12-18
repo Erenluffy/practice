@@ -292,7 +292,6 @@ def modify_testbench_for_waveform(testbench_code: str, vcd_file_path: str) -> st
                 break
     
     return '\n'.join(modified_lines)
-
 def run_real_simulation(user_code: str, testbench_code: str, generate_waveform: bool = False) -> dict:
     """
     Takes user's Verilog module and the hidden testbench,
@@ -327,7 +326,7 @@ def run_real_simulation(user_code: str, testbench_code: str, generate_waveform: 
 """
         else:
             combined_source = f"""
-`timescale 1ns/ps
+`timescale 1ns/1ps
 {user_code}
 {testbench_code}
 """
@@ -375,30 +374,71 @@ def run_real_simulation(user_code: str, testbench_code: str, generate_waveform: 
             if "PASS" in output:
                 result = {"success": True, "output": output}
                 
-                # 7. Generate waveform if requested
+                # 7. Generate waveform if requested - FIXED THIS SECTION
                 if generate_waveform and waveform_id:
                     waveform_file = tmpdir_path / "waveform.vcd"
-                    if waveform_file.exists() and waveform_file.stat().st_size > 0:
-                        # Copy VCD to persistent storage
-                        dest_vcd = WAVEFORM_DIR / f"{waveform_id}.vcd"
-                        try:
-                            shutil.copy2(waveform_file, dest_vcd)
-                            logger.info(f"Waveform saved: {dest_vcd} ({dest_vcd.stat().st_size} bytes)")
-                            logger.info(f"VCD file exists: {dest_vcd.exists()}")
-                            
-                            # Generate simple HTML viewer
-                            html_file = create_simple_waveform_viewer(waveform_id)
-                            if html_file:
-                                result["waveform_html"] = True
-                                logger.info(f"HTML waveform viewer created: {html_file}")
-                            
-                            result["waveform_id"] = waveform_id
-                            logger.info(f"Waveform ID assigned: {waveform_id}")
-                            
-                        except Exception as e:
-                            logger.error(f"Failed to save waveform: {e}")
+                    
+                    logger.info(f"Looking for VCD file at: {waveform_file}")
+                    logger.info(f"VCD file exists: {waveform_file.exists()}")
+                    
+                    if waveform_file.exists():
+                        file_size = waveform_file.stat().st_size
+                        logger.info(f"VCD file size: {file_size} bytes")
+                        
+                        if file_size > 0:
+                            # Copy VCD to persistent storage
+                            dest_vcd = WAVEFORM_DIR / f"{waveform_id}.vcd"
+                            try:
+                                # Ensure directory exists
+                                WAVEFORM_DIR.mkdir(exist_ok=True, parents=True)
+                                
+                                # Copy the file
+                                shutil.copy2(waveform_file, dest_vcd)
+                                
+                                # Verify copy
+                                if dest_vcd.exists():
+                                    copied_size = dest_vcd.stat().st_size
+                                    logger.info(f"✅ Waveform saved: {dest_vcd} ({copied_size} bytes)")
+                                    logger.info(f"✅ VCD file copied successfully")
+                                    
+                                    # Create HTML viewer
+                                    html_file = create_simple_waveform_viewer(waveform_id)
+                                    if html_file and html_file.exists():
+                                        result["waveform_html"] = True
+                                        logger.info(f"✅ HTML viewer created: {html_file}")
+                                    
+                                    result["waveform_id"] = waveform_id
+                                    logger.info(f"✅ Waveform ID: {waveform_id}")
+                                    
+                                    # DEBUG: List files in waveform directory
+                                    logger.info(f"Files in {WAVEFORM_DIR}: {list(WAVEFORM_DIR.glob('*'))}")
+                                else:
+                                    logger.error(f"❌ Failed to copy VCD file: {dest_vcd} does not exist")
+                            except Exception as e:
+                                logger.error(f"❌ Failed to save waveform: {e}")
+                        else:
+                            logger.warning(f"VCD file exists but is empty (0 bytes)")
                     else:
-                        logger.warning("Waveform file not created or empty during simulation")
+                        # Check if VCD was created with a different name
+                        vcd_files = list(tmpdir_path.glob("*.vcd"))
+                        logger.warning(f"No waveform.vcd found. Other VCD files: {vcd_files}")
+                        
+                        if vcd_files:
+                            # Try the first VCD file found
+                            alt_vcd = vcd_files[0]
+                            logger.info(f"Trying alternative VCD file: {alt_vcd}")
+                            
+                            dest_vcd = WAVEFORM_DIR / f"{waveform_id}.vcd"
+                            shutil.copy2(alt_vcd, dest_vcd)
+                            
+                            if dest_vcd.exists():
+                                # Create HTML viewer
+                                html_file = create_simple_waveform_viewer(waveform_id)
+                                if html_file:
+                                    result["waveform_html"] = True
+                                
+                                result["waveform_id"] = waveform_id
+                                logger.info(f"✅ Waveform saved from alternative file")
                 
                 return result
             else:
@@ -420,7 +460,7 @@ def run_real_simulation(user_code: str, testbench_code: str, generate_waveform: 
                 "details": "Simulation took too long (30s limit)."
             }
         except Exception as e:
-            logger.error(f"Simulation error: {e}", exc_info=True)
+            logger.error(f"Simulation error: {e}")
             return {
                 "success": False,
                 "error": "Simulation Error",

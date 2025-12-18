@@ -35,13 +35,45 @@ WAVEFORM_DIR.mkdir(exist_ok=True, parents=True)
 logger.info(f"Waveform directory: {WAVEFORM_DIR}")
 logger.info(f"Waveform directory exists: {WAVEFORM_DIR.exists()}")
 
-# === FIX: Mount static files at root path ===
-try:
-    app.mount("/waveforms", StaticFiles(directory=WAVEFORM_DIR), name="waveforms")
-    logger.info(f"Static files mounted at /waveforms")
-except Exception as e:
-    logger.error(f"Failed to mount static files: {e}")
 
+# Remove this line:
+# app.mount("/waveforms", StaticFiles(directory=WAVEFORM_DIR), name="waveforms")
+
+# Add this endpoint instead:
+@app.get("/waveforms/{filename}")
+async def serve_waveform_file(filename: str):
+    """Serve waveform files directly"""
+    try:
+        file_path = WAVEFORM_DIR / filename
+        
+        logger.info(f"Serving waveform file: {file_path}")
+        logger.info(f"File exists: {file_path.exists()}")
+        
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {filename}")
+        
+        # Determine content type
+        if filename.endswith('.html'):
+            content = file_path.read_text()
+            return HTMLResponse(content=content)
+        elif filename.endswith('.vcd'):
+            return FileResponse(
+                file_path,
+                media_type="application/octet-stream",
+                filename=filename
+            )
+        elif filename.endswith('.svg'):
+            return FileResponse(
+                file_path,
+                media_type="image/svg+xml",
+                filename=filename
+            )
+        else:
+            return FileResponse(file_path)
+            
+    except Exception as e:
+        logger.error(f"Error serving file {filename}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 # CORS - ALLOW YOUR STATIC SITE
 app.add_middleware(
     CORSMiddleware,

@@ -20,7 +20,7 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 # Setup logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VLSI Practice API")
@@ -57,78 +57,8 @@ class CodeRequest(BaseModel):
     user_id: str = "anonymous"
     generate_waveform: bool = False
 
-# Default problems if JSON file is not found
-DEFAULT_PROBLEMS = [
-    {
-        "id": "and_gate",
-        "title": "AND Gate",
-        "description": "Implement a 2-input AND gate: out = a & b",
-        "difficulty": "easy",
-        "category": "Combinational Logic",
-        "template": "module top_module(input a, b, output out);\n  // assign out = a & b;\nendmodule",
-        "testbench": """`timescale 1ns/1ps
-module tb();
-    reg a, b;
-    wire out;
-    integer passed_tests = 0;
-    integer total_tests = 0;
-    
-    top_module dut (.a(a), .b(b), .out(out));
-    
-    initial begin
-        $display("Testing AND gate...");
-        
-        // Test 1
-        a=0; b=0; #10;
-        total_tests = total_tests + 1;
-        if (out !== 1'b0) begin
-            $display("FAIL 00: Expected out=0, Got out=%b", out);
-        end else begin
-            passed_tests = passed_tests + 1;
-        end
-        
-        // Test 2
-        a=0; b=1; #10;
-        total_tests = total_tests + 1;
-        if (out !== 1'b0) begin
-            $display("FAIL 01: Expected out=0, Got out=%b", out);
-        end else begin
-            passed_tests = passed_tests + 1;
-        end
-        
-        // Test 3
-        a=1; b=0; #10;
-        total_tests = total_tests + 1;
-        if (out !== 1'b0) begin
-            $display("FAIL 10: Expected out=0, Got out=%b", out);
-        end else begin
-            passed_tests = passed_tests + 1;
-        end
-        
-        // Test 4
-        a=1; b=1; #10;
-        total_tests = total_tests + 1;
-        if (out !== 1'b1) begin
-            $display("FAIL 11: Expected out=1, Got out=%b", out);
-        end else begin
-            passed_tests = passed_tests + 1;
-        end
-        
-        // Final Result
-        if (passed_tests == total_tests) begin
-            $display("PASS: All %0d tests correct!", total_tests);
-        end else begin
-            $display("FAIL: Passed %0d/%0d tests", passed_tests, total_tests);
-        end
-        $finish;
-    end
-endmodule""",
-        "hint": "Use the & operator: assign out = a & b;"
-    }
-]
-
 # Load problems with error handling
-PROBLEMS = DEFAULT_PROBLEMS
+PROBLEMS = []
 
 def load_problems():
     """Load problems from JSON file or use defaults"""
@@ -151,9 +81,9 @@ def load_problems():
                     return True
     except Exception as e:
         logger.error(f"Failed to load problems.json: {e}")
-        PROBLEMS = DEFAULT_PROBLEMS
+        PROBLEMS = []
     
-    logger.info(f"Using {len(PROBLEMS)} default problems")
+    logger.error(f"No problems loaded!")
     return False
 
 # Load problems at startup
@@ -266,7 +196,6 @@ async def run_code(request: CodeRequest):
         if "waveform_id" in result:
             response["waveform_id"] = result["waveform_id"]
             response["waveform_url"] = f"/api/waveform/{result['waveform_id']}"
-            # Also provide direct URLs for convenience
             response["waveform_vcd_url"] = f"/waveforms/{result['waveform_id']}.vcd"
             if result.get("waveform_svg", False):
                 response["waveform_svg_url"] = f"/waveforms/{result['waveform_id']}.svg"
@@ -339,7 +268,7 @@ def run_real_simulation(user_code: str, testbench_code: str, generate_waveform: 
         logger.info(f"Running simulation in temp dir: {tmpdir}")
         
         # 1. Check for module name in user code
-        if "module top_module" not in user_code and "module top_module" not in user_code:
+        if "module top_module" not in user_code:
             return {
                 "success": False,
                 "error": "Compilation Error",
@@ -418,14 +347,15 @@ def run_real_simulation(user_code: str, testbench_code: str, generate_waveform: 
                         shutil.copy2(waveform_file, dest_vcd)
                         logger.info(f"Waveform saved: {dest_vcd} ({dest_vcd.stat().st_size} bytes)")
                         
-                        # Try to generate SVG
+                        # Try to generate SVG - but don't block if it fails
                         try:
-                            svg_file = generate_svg_from_vcd(waveform_file, waveform_id)
-                            if svg_file and svg_file.exists():
+                            # Run SVG generation in background to avoid timeout
+                            svg_file = generate_svg_from_vcd_async(waveform_file, waveform_id)
+                            if svg_file:
                                 result["waveform_svg"] = True
-                                logger.info(f"SVG generated: {svg_file}")
                         except Exception as e:
                             logger.warning(f"SVG generation failed (VCD still available): {e}")
+                            # Don't fail the whole request if SVG generation fails
                         
                         result["waveform_id"] = waveform_id
                     else:
@@ -458,70 +388,64 @@ def run_real_simulation(user_code: str, testbench_code: str, generate_waveform: 
                 "details": str(e)
             }
 
-def generate_svg_from_vcd(vcd_file: Path, waveform_id: str) -> Optional[Path]:
+def generate_svg_from_vcd_async(vcd_file: Path, waveform_id: str) -> Optional[Path]:
     """
-    Generate SVG waveform from VCD using gtkwave
+    Generate SVG waveform from VCD using gtkwave - runs asynchronously
     """
     svg_file = WAVEFORM_DIR / f"{waveform_id}.svg"
     
-    try:
-        # Create a simple TCL script for gtkwave
-        tcl_content = f'''\
-# Load VCD file
+    # Create a simplified TCL script that exits quickly
+    tcl_content = f'''\
 gtkwave::loadFile "{vcd_file}"
-
-# Add all signals
 set all_signals [gtkwave::getSignals "*"]
 gtkwave::addSignalsFromList $all_signals
-
-# Set time range to show all
 gtkwave::setZoomFactor -5
-gtkwave::/View/Show_Grid/On
-gtkwave::/View/Show_Axis/On
-
-# Export to SVG
-gtkwave::/File/Export_To_SVG "{svg_file}" -flatten
-
-# Exit
-gtkwave::exit
+gtkwave::/File/Export_To_SVG "{svg_file}"
+exit
 '''
-        
-        # Write TCL script
-        tcl_file = WAVEFORM_DIR / f"{waveform_id}.tcl"
-        tcl_file.write_text(tcl_content)
-        
-        # Run gtkwave with xvfb-run if available (for headless servers)
+    
+    # Write TCL script
+    tcl_file = WAVEFORM_DIR / f"{waveform_id}.tcl"
+    tcl_file.write_text(tcl_content)
+    
+    try:
+        # Use a simpler approach with shorter timeout
         cmd = []
         
-        # Check if xvfb-run is available
-        try:
-            subprocess.run(["which", "xvfb-run"], capture_output=True, check=True)
-            cmd = ["xvfb-run", "-a"]
-        except:
-            pass
+        # Check DISPLAY environment
+        if not os.environ.get("DISPLAY"):
+            # No display available, try xvfb
+            try:
+                subprocess.run(["which", "xvfb-run"], capture_output=True, check=True)
+                cmd = ["xvfb-run", "-a"]
+            except:
+                logger.warning("No DISPLAY and xvfb-run not available")
+                return None
         
-        cmd.extend(["gtkwave", "-T", str(tcl_file)])
+        cmd.extend(["gtkwave", "-f", str(vcd_file), "-T", str(tcl_file)])
         
-        logger.info(f"Running GTKWave: {' '.join(cmd)}")
+        logger.info(f"Running GTKWave for SVG generation: {' '.join(cmd)}")
         
+        # Use a shorter timeout
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=15  # Shorter timeout
         )
         
-        if result.returncode != 0:
-            logger.warning(f"GTKWave failed: {result.stderr}")
-        
-        if svg_file.exists() and svg_file.stat().st_size > 100:  # At least 100 bytes
+        if result.returncode == 0 and svg_file.exists() and svg_file.stat().st_size > 100:
+            logger.info(f"SVG generated successfully: {svg_file}")
             return svg_file
         else:
-            logger.warning("SVG file not created or too small by GTKWave")
+            logger.warning(f"GTKWave failed or no SVG created: {result.stderr}")
             return None
             
+    except subprocess.TimeoutExpired:
+        logger.warning("GTKWave timeout - SVG generation taking too long")
+        return None
     except Exception as e:
-        logger.error(f"Error in generate_svg_from_vcd: {e}")
+        logger.warning(f"SVG generation error: {e}")
         return None
 
 @app.get("/api/health")

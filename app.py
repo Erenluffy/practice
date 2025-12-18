@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 Backend API for VLSI Practice with MongoDB Waveform Storage
-Optimized for Render.com deployment
+Clean and simple version with auto-cleanup
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
@@ -14,11 +14,10 @@ import os
 import json
 import uuid
 import logging
+import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from pathlib import Path
-
-# MongoDB imports
 import motor.motor_asyncio
 
 # Setup logging
@@ -27,17 +26,15 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VLSI Practice API")
 
-# MongoDB configuration - REMOVE YOUR PASSWORD FROM CODE!
-# Get from environment variable instead
+# MongoDB configuration
 MONGODB_URL = os.environ.get("MONGODB_URI", "mongodb+srv://teddugovardhan544_db_user:WVjIA96jQ31net0j@cluster0.kwkkleo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
-DATABASE_NAME = os.environ.get("MONGODB_DB", "Cluster0")
-WAVEFORM_COLLECTION = "waveforms"
+DATABASE_NAME = os.environ.get("MONGODB_DB", "vlsipractice")
 
 # Initialize MongoDB client
 try:
     client = motor.motor_asyncio.AsyncIOMotorClient(MONGODB_URL)
     db = client[DATABASE_NAME]
-    waveforms_collection = db[WAVEFORM_COLLECTION]
+    waveforms_collection = db["waveforms"]
     logger.info(f"Connected to MongoDB: {DATABASE_NAME}")
 except Exception as e:
     logger.error(f"Failed to connect to MongoDB: {e}")
@@ -68,24 +65,12 @@ logger.info(f"Loaded {len(PROBLEMS)} problems")
 
 @app.get("/")
 async def root():
-    return {"status": "VLSI Practice API", "version": "3.0", "storage": "MongoDB"}
+    return {"status": "VLSI Practice API", "version": "3.0"}
 
 @app.get("/api/problems")
 async def get_problems():
     """Return list of available problems"""
-    simplified_problems = []
-    for problem in PROBLEMS:
-        simplified = {
-            "id": problem["id"],
-            "title": problem["title"],
-            "description": problem["description"],
-            "difficulty": problem["difficulty"],
-            "category": problem["category"],
-            "template": problem["template"]
-        }
-        simplified_problems.append(simplified)
-    
-    return {"problems": simplified_problems}
+    return {"problems": PROBLEMS}
 
 @app.get("/api/waveform/{waveform_id}")
 async def get_waveform(waveform_id: str, download: bool = False):
@@ -100,16 +85,14 @@ async def get_waveform(waveform_id: str, download: bool = False):
         if not waveform:
             raise HTTPException(status_code=404, detail=f"Waveform {waveform_id} not found")
         
-        # Check if expired
+        # Check if expired and clean up
         expires_at = waveform.get("expires_at")
         if expires_at and datetime.now() > expires_at:
-            # Delete expired waveform
             await waveforms_collection.delete_one({"waveform_id": waveform_id})
             raise HTTPException(status_code=404, detail="Waveform expired")
         
         # Return HTML or VCD based on request
         if download:
-            # Return VCD file for download
             vcd_content = waveform.get("vcd_content", "")
             if not vcd_content:
                 raise HTTPException(status_code=404, detail="VCD content not available")
@@ -120,10 +103,8 @@ async def get_waveform(waveform_id: str, download: bool = False):
                 headers={"Content-Disposition": f"attachment; filename={waveform_id}.vcd"}
             )
         else:
-            # Return HTML viewer
             html_content = waveform.get("html_content", "")
             if not html_content:
-                # Create simple HTML if not exists
                 html_content = create_basic_html(waveform_id)
             
             return HTMLResponse(content=html_content)
@@ -135,7 +116,7 @@ async def get_waveform(waveform_id: str, download: bool = False):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/run")
-async def run_code(request: CodeRequest):
+async def run_code(request: CodeRequest, background_tasks: BackgroundTasks):
     """Execute Verilog code"""
     try:
         # Find problem
@@ -169,12 +150,22 @@ async def run_code(request: CodeRequest):
             response["waveform_id"] = waveform_id
             response["waveform_url"] = f"/api/waveform/{waveform_id}"
             response["waveform_download_url"] = f"/api/waveform/{waveform_id}?download=true"
+            
+            # Schedule cleanup after 24 hours
+            background_tasks.add_task(schedule_waveform_cleanup, waveform_id)
         
         return response
         
     except Exception as e:
         logger.error(f"Error in run_code: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+async def schedule_waveform_cleanup(waveform_id: str):
+    """Schedule cleanup of waveform after 24 hours"""
+    await asyncio.sleep(24 * 3600)  # 24 hours
+    if waveforms_collection:
+        await waveforms_collection.delete_one({"waveform_id": waveform_id})
+        logger.info(f"Cleaned up expired waveform: {waveform_id}")
 
 async def run_simulation(user_code: str, testbench: str, generate_waveform: bool, problem_title: str) -> Dict:
     """Run Verilog simulation and store result in MongoDB"""
@@ -234,34 +225,23 @@ async def run_simulation(user_code: str, testbench: str, generate_waveform: bool
                 vcd_file = tmp_path / "waveform.vcd"
                 if vcd_file.exists() and vcd_file.stat().st_size > 0:
                     try:
-                        # Read VCD content
                         vcd_content = vcd_file.read_text()
+                        html_content = create_simple_html(waveform_id)
                         
-                        # Create HTML viewer
-                        html_content = create_waveform_html(waveform_id, vcd_content[:500])  # First 500 chars for preview
-                        
-                        # Store in MongoDB
                         waveform_doc = {
                             "waveform_id": waveform_id,
                             "vcd_content": vcd_content,
                             "html_content": html_content,
                             "created_at": datetime.now(),
-                            "expires_at": datetime.now() + timedelta(hours=24),  # 24 hour expiry
-                            "metadata": {
-                                "problem": problem_title,
-                                "size_bytes": len(vcd_content),
-                                "lines": vcd_content.count('\n'),
-                                "type": "VCD"
-                            }
+                            "expires_at": datetime.now() + timedelta(hours=24),
                         }
                         
                         await waveforms_collection.insert_one(waveform_doc)
-                        logger.info(f"✅ Waveform saved to MongoDB: {waveform_id}")
-                        
+                        logger.info(f"Waveform saved: {waveform_id}")
                         result["waveform_id"] = waveform_id
                         
                     except Exception as e:
-                        logger.error(f"Failed to save waveform to MongoDB: {e}")
+                        logger.error(f"Failed to save waveform: {e}")
             
             return result
         else:
@@ -271,264 +251,51 @@ async def run_simulation(user_code: str, testbench: str, generate_waveform: bool
                 "output": output[:1000]
             }
 
-def create_waveform_html(waveform_id: str, vcd_preview: str = "") -> str:
-    """Create HTML viewer for waveform"""
-    
-    # Extract signal names from VCD preview
-    signals = []
-    for line in vcd_preview.split('\n'):
-        if '$var' in line:
-            parts = line.split()
-            if len(parts) >= 5:
-                signals.append(parts[4])
-    
-    signal_list = ', '.join(signals[:5])  # Show first 5 signals
-    
-    # Create the HTML with proper escaping
-    vcd_preview_display = vcd_preview[:500] if vcd_preview else ""
-    
-    html = f'''<!DOCTYPE html>
+def create_simple_html(waveform_id: str) -> str:
+    """Create simple HTML viewer"""
+    return f'''<!DOCTYPE html>
 <html>
 <head>
     <title>Waveform {waveform_id}</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        
-        body {{
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-            color: #333;
-        }}
-        
-        .container {{
-            max-width: 1000px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
-        }}
-        
-        .header {{
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 25px 30px;
-        }}
-        
-        .header h1 {{
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 5px;
-        }}
-        
-        .header .subtitle {{
-            font-size: 14px;
-            opacity: 0.9;
-        }}
-        
-        .content {{
-            padding: 30px;
-        }}
-        
-        .info-card {{
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            border-left: 4px solid #4CAF50;
-        }}
-        
-        .info-row {{
-            display: flex;
-            margin-bottom: 10px;
-        }}
-        
-        .info-label {{
-            font-weight: 600;
-            width: 150px;
-            color: #495057;
-        }}
-        
-        .info-value {{
-            flex: 1;
-        }}
-        
-        .actions {{
-            display: flex;
-            gap: 15px;
-            margin: 30px 0;
-            flex-wrap: wrap;
-        }}
-        
-        .btn {{
-            padding: 12px 24px;
-            background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.3s ease;
-        }}
-        
-        .btn:hover {{
-            background: #45a049;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }}
-        
-        .btn-download {{
-            background: #2196F3;
-        }}
-        
-        .btn-download:hover {{
-            background: #1976D2;
-        }}
-        
-        .waveform-preview {{
-            background: #1e1e1e;
-            color: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            margin-top: 20px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            max-height: 300px;
-            overflow-y: auto;
-        }}
-        
-        .signal-badge {{
-            display: inline-block;
-            background: #667eea;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            margin: 2px;
-            font-size: 12px;
-        }}
-        
-        .footer {{
-            padding: 20px 30px;
-            text-align: center;
-            color: #6c757d;
-            font-size: 14px;
-            border-top: 1px solid #e9ecef;
-        }}
-        
-        @media (max-width: 768px) {{
-            .actions {{
-                flex-direction: column;
-            }}
-            
-            .btn {{
-                width: 100%;
-                justify-content: center;
-            }}
-        }}
+        body {{ font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+        h1 {{ color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px; }}
+        .info {{ background: #e8f5e9; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+        .btn {{ display: inline-block; background: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin: 10px 5px; }}
+        .btn:hover {{ background: #45a049; }}
+        .btn-vcd {{ background: #2196F3; }}
+        .btn-vcd:hover {{ background: #1976D2; }}
     </style>
-    
-    <!-- Font Awesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1><i class="fas fa-wave-square"></i> Digital Waveform Viewer</h1>
-            <div class="subtitle">ID: {waveform_id} | Generated: <span id="timestamp"></span></div>
+        <h1>📊 Digital Waveform</h1>
+        <div class="info">
+            <p><strong>ID:</strong> {waveform_id}</p>
+            <p><strong>Format:</strong> VCD (Value Change Dump)</p>
+            <p><strong>Expires:</strong> 24 hours from generation</p>
         </div>
         
-        <div class="content">
-            <div class="info-card">
-                <div class="info-row">
-                    <div class="info-label">Waveform ID:</div>
-                    <div class="info-value"><code>{waveform_id}</code></div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Format:</div>
-                    <div class="info-value">Value Change Dump (VCD)</div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Signals Detected:</div>
-                    <div class="info-value">
-                        {signal_list if signal_list else 'No signals detected in preview'}
-                    </div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Storage:</div>
-                    <div class="info-value">MongoDB (24-hour retention)</div>
-                </div>
-            </div>
-            
-            <div class="actions">
-                <a href="/api/waveform/{waveform_id}?download=true" class="btn btn-download">
-                    <i class="fas fa-download"></i> Download VCD File
-                </a>
-                <a href="/api/waveform/{waveform_id}" class="btn">
-                    <i class="fas fa-redo"></i> Refresh Viewer
-                </a>
-            </div>
-            
-            <h3><i class="fas fa-info-circle"></i> How to Use:</h3>
-            <ol style="margin: 15px 0 15px 20px; line-height: 1.6;">
-                <li>Download the VCD file using the button above</li>
-                <li>Open it with GTKWave (desktop application)</li>
-                <li>Or use online VCD viewers like Wavedrom</li>
-                <li>For quick viewing, paste the VCD content into online tools</li>
-            </ol>'''
-    
-    # Add VCD preview section if we have content
-    if vcd_preview_display:
-        html += f'''
-            <h3><i class="fas fa-eye"></i> VCD Preview (first 500 chars):</h3>
-            <div class="waveform-preview">
-                <pre>{vcd_preview_display}</pre>
-            </div>'''
-    
-    html += f'''
-            <h3><i class="fas fa-microchip"></i> Recommended Tools:</h3>
-            <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">
-                <span class="signal-badge">GTKWave</span>
-                <span class="signal-badge">Sigrok</span>
-                <span class="signal-badge">ModelSim</span>
-                <span class="signal-badge">Wavedrom</span>
-                <span class="signal-badge">EDA Playground</span>
-            </div>
-        </div>
+        <a href="/api/waveform/{waveform_id}?download=true" class="btn btn-vcd">
+            ⬇ Download VCD File
+        </a>
+        <a href="/api/waveform/{waveform_id}" class="btn">
+            🔄 Refresh
+        </a>
         
-        <div class="footer">
-            <p>Waveform stored in MongoDB • Auto-expires in 24 hours • <a href="/api/waveform/{waveform_id}?download=true" style="color: #667eea;">Download VCD</a></p>
-        </div>
+        <h3>How to view:</h3>
+        <ol>
+            <li>Download the VCD file</li>
+            <li>Open with GTKWave or similar viewer</li>
+            <li>Or use online VCD viewers</li>
+        </ol>
     </div>
-    
-    <script>
-        document.getElementById('timestamp').textContent = new Date().toLocaleString();
-        
-        // Auto-refresh if tab is visible
-        document.addEventListener('visibilitychange', function() {{
-            if (!document.hidden) {{
-                window.location.reload();
-            }}
-        }});
-    </script>
 </body>
 </html>'''
-    
-    return html
 
 def create_basic_html(waveform_id: str) -> str:
-    """Create basic HTML if detailed one fails"""
+    """Create basic HTML fallback"""
     return f'''<!DOCTYPE html>
 <html>
 <head><title>Waveform {waveform_id}</title></head>
@@ -544,7 +311,6 @@ async def health_check():
     """Health check endpoint"""
     mongo_status = "connected" if client else "disconnected"
     
-    # Count waveforms in database
     waveform_count = 0
     if waveforms_collection:
         try:
@@ -554,47 +320,33 @@ async def health_check():
     
     return {
         "status": "healthy",
-        "storage": "MongoDB",
-        "mongo_status": mongo_status,
-        "waveform_count": waveform_count,
-        "problems_count": len(PROBLEMS),
-        "timestamp": datetime.now().isoformat()
+        "mongo": mongo_status,
+        "waveforms": waveform_count,
+        "problems": len(PROBLEMS)
     }
 
-@app.get("/api/admin/waveforms")
-async def list_waveforms(limit: int = 10):
-    if not waveforms_collection:
-        return {"error": "Database not available"}
+# Background task to clean old waveforms periodically
+@app.on_event("startup")
+async def startup_event():
+    """Start background cleanup task"""
+    asyncio.create_task(periodic_cleanup())
 
-    waveforms = []
-    async for doc in waveforms_collection.find().sort("created_at", -1).limit(limit):
-        waveforms.append({
-            "id": doc.get("waveform_id"),
-            "created": doc.get("created_at").isoformat() if doc.get("created_at") else None,
-            "expires": doc.get("expires_at").isoformat() if doc.get("expires_at") else None,
-            "size": doc.get("metadata", {}).get("size_bytes", 0),
-            "problem": doc.get("metadata", {}).get("problem", "Unknown")
-        })
-
-    total = await waveforms_collection.count_documents({})
-
-    return {
-        "waveforms": waveforms,
-        "total": total
-    }
-
-@app.delete("/api/admin/waveforms/{waveform_id}")
-async def delete_waveform(waveform_id: str):
-    """Delete a waveform from database"""
-    if not waveforms_collection:
-        raise HTTPException(status_code=500, detail="Database not available")
-    
-    result = await waveforms_collection.delete_one({"waveform_id": waveform_id})
-    
-    if result.deleted_count:
-        return {"message": f"Waveform {waveform_id} deleted"}
-    else:
-        raise HTTPException(status_code=404, detail="Waveform not found")
+async def periodic_cleanup():
+    """Clean up expired waveforms every hour"""
+    while True:
+        try:
+            if waveforms_collection:
+                # Delete waveforms older than 24 hours
+                cutoff = datetime.now() - timedelta(hours=24)
+                result = await waveforms_collection.delete_many({
+                    "created_at": {"$lt": cutoff}
+                })
+                if result.deleted_count > 0:
+                    logger.info(f"Cleaned up {result.deleted_count} old waveforms")
+        except Exception as e:
+            logger.error(f"Cleanup error: {e}")
+        
+        await asyncio.sleep(3600)  # Run every hour
 
 if __name__ == "__main__":
     import uvicorn

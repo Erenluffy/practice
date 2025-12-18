@@ -26,12 +26,12 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Create waveform directories (both locations for compatibility)
+RUN mkdir -p /tmp/waveforms && mkdir -p /app/waveforms
+
 # Set Python path
 ENV PYTHONPATH=/app
 ENV PORT=8000
-
-# Create directory for waveform files
-RUN mkdir -p /app/waveforms
 
 # Run the application
 CMD ["python3", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

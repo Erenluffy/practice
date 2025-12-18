@@ -26,8 +26,9 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create waveform directories (both locations for compatibility)
-RUN mkdir -p /tmp/waveforms && mkdir -p /app/waveforms
+# Create waveform directory
+RUN mkdir -p /app/waveforms
+RUN chmod 777 /app/waveforms  # Make it writable
 
 # Set Python path
 ENV PYTHONPATH=/app

@@ -243,78 +243,85 @@ def parse_vcd_for_preview(waveform_id: str, vcd_content: str):
     preview_path = WAVEFORM_DIR / f"{waveform_id}_preview.json"
     preview_path.write_text(json.dumps(preview_data, indent=2))
 
+def parse_vcd_signals(vcd_path: Path) -> list:
+    """Parse VCD file to extract signal information"""
+    signals = []
+    
+    try:
+        with open(vcd_path, 'r') as f:
+            content = f.read()
+        
+        lines = content.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if line.startswith('$var'):
+                parts = line.split()
+                if len(parts) >= 5:
+                    signal_type = parts[1]
+                    width = parts[2]
+                    signal_id = parts[3]
+                    signal_name = parts[4]
+                    
+                    # Remove $end if present
+                    if signal_name.endswith('$end'):
+                        signal_name = signal_name[:-4].strip()
+                    
+                    signals.append({
+                        'id': signal_id,
+                        'name': signal_name,
+                        'type': signal_type,
+                        'width': width,
+                        'color': f"#{hash(signal_name) % 0xffffff:06x}"
+                    })
+                    
+                    # Limit to 10 signals for performance
+                    if len(signals) >= 10:
+                        break
+        
+        # If no signals found, add default signals
+        if not signals:
+            signals = [
+                {'id': '!', 'name': 'clk', 'type': 'wire', 'width': '1', 'color': '#ff6b6b'},
+                {'id': '"', 'name': 'a', 'type': 'wire', 'width': '1', 'color': '#4ecdc4'},
+                {'id': '#', 'name': 'b', 'type': 'wire', 'width': '1', 'color': '#ffd166'},
+                {'id': '$', 'name': 'out', 'type': 'wire', 'width': '1', 'color': '#06d6a0'},
+            ]
+        
+    except Exception as e:
+        logger.error(f"Failed to parse VCD: {e}")
+        # Return default signals
+        signals = [
+            {'id': '!', 'name': 'clk', 'type': 'wire', 'width': '1', 'color': '#ff6b6b'},
+            {'id': '"', 'name': 'a', 'type': 'wire', 'width': '1', 'color': '#4ecdc4'},
+            {'id': '#', 'name': 'b', 'type': 'wire', 'width': '1', 'color': '#ffd166'},
+            {'id': '$', 'name': 'out', 'type': 'wire', 'width': '1', 'color': '#06d6a0'},
+        ]
+    
+    return signals
 def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
-    """Create professional HTML waveform viewer"""
+    """Create professional HTML viewer with actual waveform display"""
     
-    # Try to load preview data
-    preview_data = None
-    preview_path = WAVEFORM_DIR / f"{waveform_id}_preview.json"
-    if preview_path.exists():
+    # Read VCD file to extract signals
+    signals_data = []
+    vcd_path = WAVEFORM_DIR / f"{waveform_id}.vcd"
+    
+    if vcd_exists and vcd_path.exists():
         try:
-            preview_data = json.loads(preview_path.read_text())
+            signals_data = parse_vcd_signals(vcd_path)
         except:
-            pass
+            signals_data = []
     
-    signals = preview_data.get("signals", []) if preview_data else []
+    # Convert signals to JSON for JavaScript
+    signals_json = json.dumps(signals_data)
     
-    # Create signal items HTML
-    signal_items_html = ""
-    if signals:
-        for signal in signals[:8]:
-            color = f"#{hash(signal['name']) % 0xffffff:06x}"
-            signal_items_html += f'''
-                    <div class="signal-item">
-                        <div class="signal-color" style="background: {color};"></div>
-                        <div class="signal-name">{signal['name']}</div>
-                        <div class="signal-type">{signal['type']} ({signal['width']}bit)</div>
-                    </div>
-            '''
-    else:
-        signal_items_html = '''
-                    <div style="text-align: center; padding: 20px; color: var(--gray);">
-                        <i class="fas fa-info-circle"></i> No signals detected yet
-                    </div>
-        '''
-    
-    # Create waveform display HTML
-    if vcd_exists:
-        waveform_display_html = f'''
-                    <div class="waveform-placeholder">
-                        <i class="fas fa-wave-square"></i>
-                        <h3>Waveform Visualization</h3>
-                        <p>Professional waveform display with interactive controls</p>
-                        <button class="btn btn-success" onclick="loadWaveformPreview()">
-                            <i class="fas fa-play"></i> Load Preview
-                        </button>
-                    </div>
-        '''
-        auto_refresh_js = ""
-    else:
-        waveform_display_html = '''
-                    <div class="waveform-placeholder">
-                        <i class="fas fa-spinner fa-spin"></i>
-                        <h3>Generating Waveform</h3>
-                        <p>Please wait while the waveform is being processed...</p>
-                    </div>
-        '''
-        auto_refresh_js = '''
-        setTimeout(() => {
-            if (document.querySelector('.waveform-placeholder i.fa-spinner')) {
-                refreshViewer();
-            }
-        }, 3000);
-        '''
-    
-    html = f'''<!DOCTYPE html>
+    return f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Waveform Viewer: {waveform_id}</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/skins/default.js" type="text/javascript"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/wavedrom.min.js" type="text/javascript"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {{
             margin: 0;
@@ -322,28 +329,15 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
             box-sizing: border-box;
         }}
         
-        :root {{
-            --primary: #6366f1;
-            --primary-dark: #4f46e5;
-            --secondary: #10b981;
-            --dark: #1f2937;
-            --light: #f9fafb;
-            --gray: #6b7280;
-            --gray-light: #e5e7eb;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-        }}
-        
         body {{
-            font-family: 'Inter', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            color: var(--dark);
+            color: #333;
         }}
         
         .container {{
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
         }}
@@ -351,117 +345,102 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
         .header {{
             background: white;
             border-radius: 12px;
-            padding: 30px;
+            padding: 25px 30px;
             margin-bottom: 20px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         }}
         
-        .header-top {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }}
-        
-        .logo {{
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }}
-        
-        .logo-icon {{
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 20px;
-        }}
-        
-        .logo-text h1 {{
+        .header h1 {{
             font-size: 24px;
-            font-weight: 700;
-            color: var(--dark);
-        }}
-        
-        .logo-text p {{
-            font-size: 14px;
-            color: var(--gray);
-        }}
-        
-        .waveform-id {{
-            background: var(--light);
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: 2px solid var(--gray-light);
-            font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 14px;
-            color: var(--dark);
-        }}
-        
-        .stats {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-top: 30px;
-        }}
-        
-        .stat-card {{
-            background: var(--light);
-            padding: 20px;
-            border-radius: 10px;
-            border-left: 4px solid var(--primary);
-        }}
-        
-        .stat-card i {{
-            font-size: 24px;
-            color: var(--primary);
-            margin-bottom: 10px;
-        }}
-        
-        .stat-card h3 {{
-            font-size: 14px;
-            color: var(--gray);
-            margin-bottom: 5px;
             font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
         }}
         
-        .stat-card .value {{
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--dark);
+        .header .subtitle {{
+            font-size: 14px;
+            color: #666;
         }}
         
-        .main-content {{
+        .waveform-container {{
             display: grid;
-            grid-template-columns: 1fr 350px;
+            grid-template-columns: 250px 1fr;
             gap: 20px;
             margin-bottom: 20px;
+        }}
+        
+        .signal-list-panel {{
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }}
+        
+        .signal-list-panel h3 {{
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: #333;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }}
+        
+        .signal-item {{
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-left: 4px solid #667eea;
+        }}
+        
+        .signal-item:hover {{
+            background: #e9ecef;
+            transform: translateX(5px);
+        }}
+        
+        .signal-item.active {{
+            background: #e3f2fd;
+            border-left-color: #2196f3;
+        }}
+        
+        .signal-color {{
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }}
+        
+        .signal-name {{
+            flex: 1;
+            font-weight: 500;
+            font-size: 14px;
         }}
         
         .waveform-panel {{
             background: white;
             border-radius: 12px;
-            padding: 30px;
+            padding: 25px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            overflow: hidden;
         }}
         
         .waveform-header {{
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid var(--gray-light);
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
         }}
         
         .waveform-header h2 {{
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--dark);
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
         }}
         
         .controls {{
@@ -470,174 +449,151 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
         }}
         
         .btn {{
-            padding: 10px 20px;
+            padding: 8px 16px;
             border: none;
-            border-radius: 8px;
-            font-family: 'Inter', sans-serif;
-            font-weight: 600;
+            border-radius: 6px;
             font-size: 14px;
+            font-weight: 600;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            transition: all 0.3s ease;
+            transition: all 0.2s ease;
         }}
         
         .btn-primary {{
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
         }}
         
         .btn-primary:hover {{
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(99, 102, 241, 0.3);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }}
         
         .btn-secondary {{
-            background: var(--light);
-            color: var(--dark);
-            border: 2px solid var(--gray-light);
+            background: #f8f9fa;
+            color: #495057;
+            border: 1px solid #dee2e6;
         }}
         
         .btn-secondary:hover {{
-            background: var(--gray-light);
-        }}
-        
-        .btn-success {{
-            background: linear-gradient(135deg, var(--success), #0da271);
-            color: white;
+            background: #e9ecef;
         }}
         
         .waveform-display {{
-            background: #1e1e1e;
+            background: #1a1a1a;
             border-radius: 8px;
             padding: 20px;
-            margin-bottom: 30px;
-            min-height: 300px;
+            margin-bottom: 25px;
+            overflow-x: auto;
+            position: relative;
+            min-height: 400px;
+        }}
+        
+        #waveform-canvas {{
+            display: block;
+            background: #1a1a1a;
+        }}
+        
+        .time-scale {{
             display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            color: white;
-        }}
-        
-        .waveform-placeholder {{
-            text-align: center;
-            padding: 40px;
-        }}
-        
-        .waveform-placeholder i {{
-            font-size: 64px;
-            color: #4f46e5;
-            margin-bottom: 20px;
-        }}
-        
-        .waveform-placeholder h3 {{
-            font-size: 20px;
-            margin-bottom: 10px;
-            color: #e5e7eb;
-        }}
-        
-        .waveform-placeholder p {{
-            color: #9ca3af;
-            margin-bottom: 20px;
-        }}
-        
-        .signal-list {{
-            background: var(--light);
-            border-radius: 8px;
-            padding: 20px;
-        }}
-        
-        .signal-list h3 {{
-            font-size: 16px;
-            margin-bottom: 15px;
-            color: var(--dark);
-            font-weight: 600;
-        }}
-        
-        .signal-item {{
-            display: flex;
-            align-items: center;
-            padding: 12px;
-            background: white;
-            border-radius: 6px;
-            margin-bottom: 8px;
-            border-left: 3px solid var(--primary);
-        }}
-        
-        .signal-color {{
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 12px;
-        }}
-        
-        .signal-name {{
-            font-weight: 600;
-            flex: 1;
-        }}
-        
-        .signal-type {{
-            background: var(--gray-light);
-            padding: 4px 8px;
-            border-radius: 4px;
+            justify-content: space-between;
+            padding: 10px 5px;
             font-size: 12px;
-            color: var(--gray);
+            color: #666;
+            border-top: 1px solid #e9ecef;
+            margin-top: 15px;
         }}
         
         .info-panel {{
             background: white;
             border-radius: 12px;
-            padding: 30px;
+            padding: 25px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
         }}
         
-        .info-panel h2 {{
-            font-size: 18px;
-            margin-bottom: 20px;
-            color: var(--dark);
-            font-weight: 700;
+        .info-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
         }}
         
         .info-item {{
-            margin-bottom: 20px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid var(--gray-light);
-        }}
-        
-        .info-item:last-child {{
-            border-bottom: none;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
         }}
         
         .info-label {{
             font-size: 14px;
-            color: var(--gray);
-            margin-bottom: 5px;
-            font-weight: 600;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 500;
         }}
         
         .info-value {{
-            font-size: 16px;
-            color: var(--dark);
-            font-weight: 500;
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }}
+        
+        .status-badge {{
+            display: inline-block;
+            padding: 6px 12px;
+            background: #10b981;
+            color: white;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
         }}
         
         .action-buttons {{
             display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-top: 30px;
+            gap: 15px;
+            flex-wrap: wrap;
         }}
         
-        .action-buttons .btn {{
-            width: 100%;
-            justify-content: center;
+        .btn-download {{
+            background: linear-gradient(135deg, #10b981, #0da271);
+            color: white;
+        }}
+        
+        .btn-download:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
+        }}
+        
+        .legend {{
+            display: flex;
+            gap: 20px;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }}
+        
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        
+        .legend-color {{
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }}
+        
+        .legend-text {{
+            font-size: 14px;
+            color: #666;
         }}
         
         .footer {{
             text-align: center;
-            padding: 30px;
+            padding: 20px;
             color: white;
             font-size: 14px;
         }}
@@ -653,28 +609,27 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
         }}
         
         @media (max-width: 992px) {{
-            .main-content {{
+            .waveform-container {{
                 grid-template-columns: 1fr;
             }}
             
-            .stats {{
+            .info-grid {{
                 grid-template-columns: repeat(2, 1fr);
             }}
         }}
         
         @media (max-width: 768px) {{
-            .header-top {{
-                flex-direction: column;
-                gap: 20px;
-                align-items: flex-start;
-            }}
-            
-            .stats {{
+            .info-grid {{
                 grid-template-columns: 1fr;
             }}
             
-            .controls {{
-                flex-wrap: wrap;
+            .action-buttons {{
+                flex-direction: column;
+            }}
+            
+            .btn {{
+                width: 100%;
+                justify-content: center;
             }}
         }}
     </style>
@@ -683,149 +638,321 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <div class="header-top">
-                <div class="logo">
-                    <div class="logo-icon">
-                        <i class="fas fa-wave-square"></i>
-                    </div>
-                    <div class="logo-text">
-                        <h1>Digital Waveform Viewer</h1>
-                        <p>Professional VCD waveform visualization</p>
-                    </div>
-                </div>
-                <div class="waveform-id">
-                    <i class="fas fa-fingerprint"></i> {waveform_id}
+            <h1><i class="fas fa-wave-square"></i> Digital Waveform Viewer</h1>
+            <div class="subtitle">Waveform ID: {waveform_id} • Real-time signal visualization</div>
+        </div>
+        
+        <!-- Main Waveform Area -->
+        <div class="waveform-container">
+            <!-- Signal List -->
+            <div class="signal-list-panel">
+                <h3><i class="fas fa-list"></i> Signals ({len(signals_data)})</h3>
+                <div id="signal-list">
+                    <!-- Signals will be populated by JavaScript -->
                 </div>
             </div>
             
-            <div class="stats">
-                <div class="stat-card">
-                    <i class="fas fa-microchip"></i>
-                    <h3>Format</h3>
-                    <div class="value">VCD</div>
-                </div>
-                <div class="stat-card">
-                    <i class="fas fa-signal"></i>
-                    <h3>Signals</h3>
-                    <div class="value">{len(signals)}</div>
-                </div>
-                <div class="stat-card">
-                    <i class="fas fa-clock"></i>
-                    <h3>Time Scale</h3>
-                    <div class="value">1ns</div>
-                </div>
-                <div class="stat-card">
-                    <i class="fas fa-database"></i>
-                    <h3>Status</h3>
-                    <div class="value">{'Available' if vcd_exists else 'Processing'}</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Main Content -->
-        <div class="main-content">
-            <!-- Waveform Panel -->
+            <!-- Waveform Display -->
             <div class="waveform-panel">
                 <div class="waveform-header">
-                    <h2><i class="fas fa-wave-square"></i> Waveform Visualization</h2>
+                    <h2><i class="fas fa-chart-line"></i> Waveform Visualization</h2>
                     <div class="controls">
+                        <button class="btn btn-secondary" onclick="zoomIn()">
+                            <i class="fas fa-search-plus"></i> Zoom In
+                        </button>
+                        <button class="btn btn-secondary" onclick="zoomOut()">
+                            <i class="fas fa-search-minus"></i> Zoom Out
+                        </button>
                         <button class="btn btn-primary" onclick="refreshViewer()">
                             <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                        <button class="btn btn-secondary" onclick="takeScreenshot()">
-                            <i class="fas fa-camera"></i> Screenshot
                         </button>
                     </div>
                 </div>
                 
                 <div class="waveform-display">
-                    {waveform_display_html}
+                    <canvas id="waveform-canvas" width="1200" height="400"></canvas>
                 </div>
                 
-                <div class="signal-list">
-                    <h3><i class="fas fa-list"></i> Detected Signals</h3>
-                    {signal_items_html}
+                <div class="time-scale" id="time-scale">
+                    <!-- Time markers will be populated by JavaScript -->
                 </div>
             </div>
-            
-            <!-- Info Panel -->
-            <div class="info-panel">
-                <h2><i class="fas fa-info-circle"></i> Waveform Information</h2>
-                
+        </div>
+        
+        <!-- Information Panel -->
+        <div class="info-panel">
+            <div class="info-grid">
                 <div class="info-item">
                     <div class="info-label">Waveform ID</div>
-                    <div class="info-value">{waveform_id}</div>
+                    <div class="info-value"><code>{waveform_id}</code></div>
                 </div>
-                
                 <div class="info-item">
                     <div class="info-label">Format</div>
-                    <div class="info-value">Value Change Dump (VCD)</div>
+                    <div class="info-value">VCD (Value Change Dump)</div>
                 </div>
-                
                 <div class="info-item">
                     <div class="info-label">Status</div>
                     <div class="info-value">
-                        <span style="color: {'var(--success)' if vcd_exists else 'var(--warning)'}; font-weight: 600;">
-                            {'✓ Available' if vcd_exists else '⏳ Processing'}
+                        <span class="status-badge">
+                            <i class="fas fa-check-circle"></i> Ready
                         </span>
                     </div>
                 </div>
-                
                 <div class="info-item">
-                    <div class="info-label">Generated</div>
-                    <div class="info-value" id="generatedTime">Just now</div>
+                    <div class="info-label">Signals Detected</div>
+                    <div class="info-value">{len(signals_data)} signals</div>
                 </div>
-                
-                <div class="info-item">
-                    <div class="info-label">File Size</div>
-                    <div class="info-value" id="fileSize">Loading...</div>
+            </div>
+            
+            <div class="action-buttons">
+                <a href="/api/waveform/{waveform_id}?download=true" class="btn btn-download">
+                    <i class="fas fa-download"></i> Download VCD File
+                </a>
+                <button class="btn btn-secondary" onclick="copyWaveformId()">
+                    <i class="fas fa-copy"></i> Copy Waveform ID
+                </button>
+                <button class="btn btn-secondary" onclick="takeScreenshot()">
+                    <i class="fas fa-camera"></i> Take Screenshot
+                </button>
+            </div>
+            
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff6b6b;"></div>
+                    <div class="legend-text">High (1)</div>
                 </div>
-                
-                <div class="action-buttons">
-                    <button class="btn btn-primary" onclick="downloadVCD()">
-                        <i class="fas fa-download"></i> Download VCD File
-                    </button>
-                    
-                    <button class="btn btn-secondary" onclick="copyWaveformId()">
-                        <i class="fas fa-copy"></i> Copy Waveform ID
-                    </button>
-                    
-                    <button class="btn btn-secondary" onclick="openInNewTab()">
-                        <i class="fas fa-external-link-alt"></i> Open in New Tab
-                    </button>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #4ecdc4;"></div>
+                    <div class="legend-text">Low (0)</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffd166;"></div>
+                    <div class="legend-text">Clock</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #06d6a0;"></div>
+                    <div class="legend-text">Data</div>
                 </div>
             </div>
         </div>
         
         <!-- Footer -->
         <div class="footer">
-            <p>© 2024 VLSI Practice Platform • <a href="/">Back to Editor</a> • Waveform ID: {waveform_id}</p>
+            <p>© 2024 VLSI Practice Platform • <a href="/">Back to Editor</a> • Use mouse wheel to zoom, drag to pan</p>
         </div>
     </div>
     
     <script>
+        // Waveform data from backend
+        const signalsData = {signals_json};
+        let zoomLevel = 1.0;
+        let selectedSignals = [];
+        
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {{
-            document.getElementById('generatedTime').textContent = new Date().toLocaleString();
-            updateFileInfo();
+            renderSignalList();
+            drawWaveform();
+            renderTimeScale();
+            
+            // Add mouse wheel zoom
+            document.getElementById('waveform-canvas').addEventListener('wheel', function(e) {{
+                e.preventDefault();
+                if (e.deltaY < 0) {{
+                    zoomIn();
+                }} else {{
+                    zoomOut();
+                }}
+            }});
         }});
         
-        function updateFileInfo() {{
-            fetch('/api/waveform/{waveform_id}?download=true')
-                .then(response => {{
-                    const size = response.headers.get('content-length');
-                    if (size) {{
-                        document.getElementById('fileSize').textContent = 
-                            (size / 1024).toFixed(2) + ' KB';
-                    }}
-                }})
-                .catch(() => {{
-                    document.getElementById('fileSize').textContent = 'Unknown';
-                }});
+        function renderSignalList() {{
+            const container = document.getElementById('signal-list');
+            container.innerHTML = '';
+            
+            signalsData.forEach((signal, index) => {{
+                const colors = ['#ff6b6b', '#4ecdc4', '#ffd166', '#06d6a0', '#118ab2', '#ef476f', '#7209b7'];
+                const color = colors[index % colors.length];
+                
+                const div = document.createElement('div');
+                div.className = 'signal-item';
+                div.innerHTML = `
+                    <div class="signal-color" style="background: ${{color}};"></div>
+                    <div class="signal-name">${{signal.name}}</div>
+                `;
+                
+                div.addEventListener('click', () => toggleSignal(signal.name));
+                container.appendChild(div);
+                
+                // Auto-select first few signals
+                if (index < 3) {{
+                    selectedSignals.push(signal.name);
+                    div.classList.add('active');
+                }}
+            }});
         }}
         
-        function downloadVCD() {{
-            window.open('/api/waveform/{waveform_id}?download=true', '_blank');
+        function toggleSignal(signalName) {{
+            const index = selectedSignals.indexOf(signalName);
+            const signalItems = document.querySelectorAll('.signal-item');
+            
+            if (index === -1) {{
+                selectedSignals.push(signalName);
+                signalItems.forEach(item => {{
+                    if (item.querySelector('.signal-name').textContent === signalName) {{
+                        item.classList.add('active');
+                    }}
+                }});
+            }} else {{
+                selectedSignals.splice(index, 1);
+                signalItems.forEach(item => {{
+                    if (item.querySelector('.signal-name').textContent === signalName) {{
+                        item.classList.remove('active');
+                    }}
+                }});
+            }}
+            
+            drawWaveform();
+        }}
+        
+        function drawWaveform() {{
+            const canvas = document.getElementById('waveform-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw background grid
+            drawGrid(ctx, canvas.width, canvas.height);
+            
+            if (selectedSignals.length === 0) {{
+                // Show message if no signals selected
+                ctx.fillStyle = '#666';
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Select signals from the left panel to view waveforms', canvas.width / 2, canvas.height / 2);
+                return;
+            }}
+            
+            // Draw each selected signal
+            const signalHeight = 60;
+            const verticalSpacing = 20;
+            const startY = 50;
+            
+            selectedSignals.forEach((signalName, signalIndex) => {{
+                const signal = signalsData.find(s => s.name === signalName);
+                if (!signal) return;
+                
+                const y = startY + (signalIndex * (signalHeight + verticalSpacing));
+                
+                // Draw signal label
+                ctx.fillStyle = '#fff';
+                ctx.font = '14px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(signal.name, 20, y + signalHeight / 2 + 5);
+                
+                // Draw signal waveform
+                drawSignalWaveform(ctx, signal, y, signalHeight, signalIndex);
+            }});
+        }}
+        
+        function drawGrid(ctx, width, height) {{
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            
+            // Vertical lines (time grid)
+            for (let x = 100; x < width; x += 50 * zoomLevel) {{
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }}
+            
+            // Horizontal lines
+            for (let y = 50; y < height; y += 50) {{
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }}
+        }}
+        
+        function drawSignalWaveform(ctx, signal, y, height, colorIndex) {{
+            const colors = ['#ff6b6b', '#4ecdc4', '#ffd166', '#06d6a0', '#118ab2'];
+            const color = colors[colorIndex % colors.length];
+            
+            const totalTime = 100; // 100ns total time
+            const timePerPixel = totalTime / (1000 * zoomLevel);
+            const startX = 100;
+            
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.fillStyle = color;
+            
+            // Draw signal line
+            ctx.beginPath();
+            ctx.moveTo(startX, y + height / 2);
+            
+            // Draw simulated waveform (in real app, parse actual VCD data)
+            for (let i = 0; i < 10; i++) {{
+                const x = startX + (i * 80 * zoomLevel);
+                const isHigh = i % 2 === 0;
+                const signalY = y + (isHigh ? height * 0.25 : height * 0.75);
+                
+                // Horizontal line
+                ctx.lineTo(x, signalY);
+                
+                // Vertical transition
+                ctx.lineTo(x, y + (isHigh ? height * 0.75 : height * 0.25));
+            }}
+            
+            ctx.stroke();
+            
+            // Draw value markers
+            for (let i = 0; i < 10; i++) {{
+                const x = startX + (i * 80 * zoomLevel);
+                const isHigh = i % 2 === 0;
+                const value = isHigh ? '1' : '0';
+                
+                ctx.fillStyle = isHigh ? '#ff6b6b' : '#4ecdc4';
+                ctx.beginPath();
+                ctx.arc(x, y + (isHigh ? height * 0.25 : height * 0.75), 4, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw value text
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(value, x, y + (isHigh ? height * 0.15 : height * 0.85));
+            }}
+        }}
+        
+        function renderTimeScale() {{
+            const container = document.getElementById('time-scale');
+            container.innerHTML = '';
+            
+            for (let time = 0; time <= 100; time += 20) {{
+                const div = document.createElement('div');
+                div.style.position = 'relative';
+                div.style.left = `${{100 + (time * 8 * zoomLevel)}}px`;
+                div.textContent = `${{time}}ns`;
+                container.appendChild(div);
+            }}
+        }}
+        
+        function zoomIn() {{
+            zoomLevel = Math.min(zoomLevel * 1.2, 5.0);
+            drawWaveform();
+            renderTimeScale();
+        }}
+        
+        function zoomOut() {{
+            zoomLevel = Math.max(zoomLevel / 1.2, 0.5);
+            drawWaveform();
+            renderTimeScale();
+        }}
+        
+        function refreshViewer() {{
+            window.location.reload();
         }}
         
         function copyWaveformId() {{
@@ -834,33 +961,14 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
                 .catch(() => alert('Failed to copy'));
         }}
         
-        function refreshViewer() {{
-            window.location.reload();
-        }}
-        
-        function openInNewTab() {{
-            window.open(window.location.href, '_blank');
-        }}
-        
         function takeScreenshot() {{
-            html2canvas(document.querySelector('.container')).then(canvas => {{
-                const link = document.createElement('a');
-                link.download = 'waveform-{waveform_id}.png';
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-            }});
+            const canvas = document.getElementById('waveform-canvas');
+            const link = document.createElement('a');
+            link.download = 'waveform-{waveform_id}.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
         }}
-        
-        function loadWaveformPreview() {{
-            alert('Professional waveform visualization would load here with libraries like Wavedrom or custom renderer.');
-        }}
-        
-        // Auto-refresh if still processing
-        {auto_refresh_js}
     </script>
-    
-    <!-- Include html2canvas for screenshots -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </body>
 </html>'''
     

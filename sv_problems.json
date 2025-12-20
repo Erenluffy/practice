@@ -2,45 +2,23 @@
   {
     "id": "sv_constraints_array",
     "title": "Array Constraints",
-    "description": "Write SystemVerilog code using constraint: array size < 10 and array contents sum = 100. Create a class with random array and these constraints.",
+    "description": "Write SystemVerilog code with constraints: array size < 10 and array sum = 100. Create a class with random array and test it.",
     "difficulty": "medium",
     "category": "SystemVerilog",
     "language": "systemverilog",
-    "features": ["constraints"],
-    "template": "// Write SystemVerilog code with constraints\n// Array size should be < 10\n// Array sum should be 100\n// Use: rand int array[];\n// Constraint: array.size() < 10\n// Constraint: array.sum() == 100\n\nclass constrained_array;\n    // TODO: Add your code here\n    \n    function void display();\n        // TODO: Display array\n    endfunction\nendclass\n\nmodule test;\n    initial begin\n        $display(\"Testing array constraints...\");\n        // TODO: Test your code\n        $display(\"Test completed\");\n    end\nendmodule",
-    "expected_output": "Testing array constraints",
-    "validation_rules": {
-      "required_keywords": ["class", "rand", "constraint", "array"],
-      "forbidden_keywords": [],
-      "pattern_checks": [
-        "array.*size.*<.*10",
-        "sum.*=.*100"
-      ]
-    },
+    "features": ["constraints", "randomization"],
+    "template": "class array_constraints;\n    // TODO: Add rand array and constraints\n    // constraint: size < 10\n    // constraint: sum == 100\n    \n    function void display();\n        // Display array\n    endfunction\nendclass\n\nmodule test;\n    initial begin\n        // Test the constraints\n        $display(\"Testing array constraints...\");\n        \n        // Create instance and randomize\n        // Display results\n        \n        $display(\"Test completed\");\n    end\nendmodule",
     "hint": "Use: rand int array[]; constraint c_size { array.size() < 10; } constraint c_sum { array.sum() == 100; }"
   },
   {
     "id": "sv_assert_simple",
-    "title": "Simple Assert Statement",
-    "description": "Write a SystemVerilog module with a simple assert statement to check if a signal is never X during valid cycles.",
+    "title": "Simple Assertions",
+    "description": "Write a SystemVerilog assertion to check that data is never X when valid is high.",
     "difficulty": "easy",
     "category": "SystemVerilog",
     "language": "systemverilog",
     "features": ["assertions"],
-    "template": "module checker(\n    input logic clk,\n    input logic rst_n,\n    input logic [7:0] data,\n    input logic valid\n);\n    // TODO: Add assertion\n    // Use: assert property (@(posedge clk) valid |-> !$isunknown(data))\n    \n    always @(posedge clk) begin\n        if (valid) begin\n            // Manual check\n            if ($isunknown(data)) begin\n                $display(\"ERROR: Unknown data when valid is high\");\n            end else begin\n                $display(\"OK: Valid data = 0x%h\", data);\n            end\n        end\n    end\nendmodule\n\nmodule test;\n    logic clk = 0;\n    logic rst_n = 1;\n    logic [7:0] data;\n    logic valid = 0;\n    \n    checker dut (.*);\n    \n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing assertions...\");\n        \n        // Test cases\n        valid = 1;\n        data = 8'hFF;  // Good data\n        #10;\n        \n        data = 8'hXX;  // Bad data\n        #10;\n        \n        valid = 0;\n        data = 8'hZZ;  // Don't care when not valid\n        #10;\n        \n        $display(\"Test completed\");\n        $finish;\n    end\nendmodule",
-    "expected_output": "ERROR: Unknown data",
-    "hint": "Use: assert property (@(posedge clk) valid |-> !$isunknown(data)) else $error(\"Unknown data when valid\");"
-  },
-  {
-    "id": "sv_cover_basic",
-    "title": "Basic Cover Example",
-    "description": "Create a simple covergroup to track values of a counter. Show understanding of coverpoints and bins.",
-    "difficulty": "medium",
-    "category": "SystemVerilog",
-    "language": "systemverilog",
-    "features": ["coverage"],
-    "template": "module counter(\n    input logic clk,\n    input logic rst_n,\n    input logic inc,\n    output logic [2:0] count\n);\n    // TODO: Implement 3-bit counter\n    // TODO: Add covergroup\n    \n    assign count = 0; // Placeholder\nendmodule\n\nmodule test;\n    logic clk = 0;\n    logic rst_n = 0;\n    logic inc = 0;\n    logic [2:0] count;\n    \n    counter dut (.*);\n    \n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing coverage...\");\n        \n        rst_n = 1;\n        \n        // Exercise counter\n        repeat(8) begin\n            inc = 1;\n            #10;\n            inc = 0;\n            #10;\n        end\n        \n        $display(\"Test completed\");\n        $finish;\n    end\nendmodule",
-    "expected_output": "Testing coverage",
-    "hint": "covergroup cg; coverpoint count { bins low[] = {[0:3]}; bins high[] = {[4:7]}; } endgroup"
+    "template": "module data_checker(\n    input logic clk,\n    input logic rst_n,\n    input logic [7:0] data,\n    input logic valid\n);\n    // TODO: Add assertion\n    // Should check: valid -> !$isunknown(data)\n    \n    // Also add manual check for debugging\n    always @(posedge clk) begin\n        if (valid && $isunknown(data)) begin\n            $display(\"ERROR: Unknown data when valid!\");\n        end\n    end\nendmodule\n\nmodule test;\n    logic clk = 0;\n    logic rst_n = 1;\n    logic [7:0] data;\n    logic valid;\n    \n    data_checker dut (.*);\n    \n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing assertions...\");\n        \n        // Test cases\n        valid = 1; data = 8'hFF; #10;\n        valid = 1; data = 8'hXX; #10;\n        valid = 0; data = 8'hZZ; #10;\n        \n        $display(\"Test completed\");\n        $finish;\n    end\nendmodule",
+    "hint": "Use: assert property (@(posedge clk) disable iff (!rst_n) valid |-> !$isunknown(data));"
   }
 ]

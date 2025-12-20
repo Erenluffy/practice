@@ -11,9 +11,9 @@ import tempfile
 import os
 import json
 import logging
+import re
 from pathlib import Path
-from typing import Optional, Dict, Any
-import shutil
+from typing import Optional, Dict, Any, List
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -35,7 +35,7 @@ class CodeRequest(BaseModel):
     problem_id: str
     code: str
     user_id: str = "anonymous"
-    language: str = "verilog"  # "verilog" or "systemverilog"
+    language: str = "verilog"
 
 class TestResult(BaseModel):
     success: bool
@@ -50,15 +50,6 @@ class TestResult(BaseModel):
 def load_all_problems():
     """Load problems from all problem files"""
     all_problems = []
-    
-    # Load from problems.json (if exists)
-    if os.path.exists("problems.json"):
-        try:
-            with open("problems.json", "r") as f:
-                all_problems.extend(json.load(f))
-            logger.info(f"Loaded {len(all_problems)} problems from problems.json")
-        except Exception as e:
-            logger.error(f"Failed to load problems.json: {e}")
     
     # Load from verilog_problems.json
     if os.path.exists("verilog_problems.json"):
@@ -83,7 +74,13 @@ def load_all_problems():
     # Ensure each problem has a language field
     for problem in all_problems:
         if 'language' not in problem:
-            problem['language'] = 'verilog'  # default
+            # Auto-detect based on features or file extension in template
+            if 'features' in problem and len(problem['features']) > 0:
+                problem['language'] = 'systemverilog'
+            elif 'systemverilog' in problem.get('template', '').lower() or '.sv' in problem.get('template', ''):
+                problem['language'] = 'systemverilog'
+            else:
+                problem['language'] = 'verilog'
     
     logger.info(f"Total problems loaded: {len(all_problems)}")
     return all_problems
@@ -93,7 +90,12 @@ ALL_PROBLEMS = load_all_problems()
 
 @app.get("/")
 async def root():
-    return {"status": "VLSI Practice API - SystemVerilog Support", "version": "5.0"}
+    return {
+        "status": "VLSI Practice API - SystemVerilog Support", 
+        "version": "6.0",
+        "verilog_problems": len([p for p in ALL_PROBLEMS if p.get("language") == "verilog"]),
+        "systemverilog_problems": len([p for p in ALL_PROBLEMS if p.get("language") == "systemverilog"])
+    }
 
 @app.get("/api/problems")
 async def get_all_problems():
@@ -115,13 +117,7 @@ async def get_all_problems():
 @app.get("/api/svproblems")
 async def get_sv_problems():
     """Return list of SystemVerilog problems"""
-    sv_problems = []
-    if os.path.exists("sv_problems.json"):
-        with open("sv_problems.json", "r") as f:
-            sv_problems = json.load(f)
-    else:
-        # Fallback to filter from ALL_PROBLEMS
-        sv_problems = [p for p in ALL_PROBLEMS if p.get("language", "").lower() == "systemverilog"]
+    sv_problems = [p for p in ALL_PROBLEMS if p.get("language", "").lower() == "systemverilog"]
     
     simplified = []
     for problem in sv_problems:
@@ -132,23 +128,18 @@ async def get_sv_problems():
             "difficulty": problem["difficulty"],
             "category": problem["category"],
             "template": problem["template"],
-            "language": problem.get("language", "systemverilog"),
+            "language": "systemverilog",
             "features": problem.get("features", []),
             "constraints": problem.get("constraints", ""),
-            "assertions": problem.get("assertions", "")
+            "assertions": problem.get("assertions", ""),
+            "expected_output": problem.get("expected_output", "")
         })
     return {"problems": simplified}
 
 @app.get("/api/verilog/problems")
 async def get_verilog_problems():
     """Return list of Verilog-only problems"""
-    verilog_problems = []
-    if os.path.exists("verilog_problems.json"):
-        with open("verilog_problems.json", "r") as f:
-            verilog_problems = json.load(f)
-    else:
-        # Fallback to filter from ALL_PROBLEMS
-        verilog_problems = [p for p in ALL_PROBLEMS if p.get("language", "").lower() != "systemverilog"]
+    verilog_problems = [p for p in ALL_PROBLEMS if p.get("language", "").lower() != "systemverilog"]
     
     simplified = []
     for problem in verilog_problems:
@@ -170,7 +161,7 @@ async def run_code(request: CodeRequest):
         # Find problem in ALL_PROBLEMS
         problem = next((p for p in ALL_PROBLEMS if p["id"] == request.problem_id), None)
         if not problem:
-            raise HTTPException(status_code=404, detail="Problem not found")
+            raise HTTPException(status_code=404, detail=f"Problem '{request.problem_id}' not found")
         
         # Determine language from problem
         language = problem.get("language", "verilog").lower()
@@ -182,15 +173,16 @@ async def run_code(request: CodeRequest):
         if language == "systemverilog":
             result = run_systemverilog_simulation(
                 request.code,
-                problem["testbench"],
+                problem.get("testbench", ""),
                 problem.get("constraints", ""),
                 problem.get("assertions", ""),
-                problem.get("features", [])
+                problem.get("features", []),
+                problem.get("expected_output", "")
             )
         else:
             result = run_verilog_simulation(
                 request.code,
-                problem["testbench"]
+                problem.get("testbench", "")
             )
         
         # Prepare response
@@ -209,6 +201,7 @@ async def run_code(request: CodeRequest):
         if language == "systemverilog":
             response["assertion_results"] = result.get("assertion_results", [])
             response["coverage"] = result.get("coverage", {})
+            response["constraint_check"] = result.get("constraint_check", {})
         
         if not result["success"] and "hint" in problem:
             response["hint"] = problem["hint"]
@@ -243,7 +236,7 @@ def run_verilog_simulation(user_code: str, testbench: str) -> dict:
         if compile_result.returncode != 0:
             return {
                 "success": False,
-                "error": "Compilation Failed",
+                "error": "Verilog Compilation Failed",
                 "compile_log": compile_log,
                 "details": {"compile_error": True}
             }
@@ -258,7 +251,8 @@ def run_verilog_simulation(user_code: str, testbench: str) -> dict:
         
         run_log = sim_result.stdout + sim_result.stderr
         
-        if "PASS" in run_log:
+        # Check for PASS in output
+        if "PASS" in run_log.upper():
             return {
                 "success": True,
                 "output": run_log,
@@ -277,7 +271,8 @@ def run_verilog_simulation(user_code: str, testbench: str) -> dict:
             }
 
 def run_systemverilog_simulation(user_code: str, testbench: str, constraints: str = "", 
-                                assertions: str = "", features: list = None) -> dict:
+                                assertions: str = "", features: list = None, 
+                                expected_output: str = "") -> dict:
     """Run SystemVerilog simulation using Verilator"""
     if features is None:
         features = []
@@ -285,44 +280,44 @@ def run_systemverilog_simulation(user_code: str, testbench: str, constraints: st
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         
-        # Prepare SystemVerilog source with features
+        # Prepare SystemVerilog source
         source_parts = []
         
         # Add timescale
         source_parts.append("`timescale 1ns/1ps")
         
-        # Add SystemVerilog features based on problem requirements
-        if "assertions" in features:
-            source_parts.append("`define SYSTEMVERILOG_ASSERTIONS")
-        
-        if "coverage" in features:
-            source_parts.append("`define SYSTEMVERILOG_COVERAGE")
-        
-        if "constraints" in features and constraints:
-            source_parts.append(constraints)
-        
         # Add user code
         source_parts.append(user_code)
         
+        # Add constraints if provided
+        if constraints:
+            source_parts.append(constraints)
+        
         # Add assertions if provided
-        if assertions and "assertions" in features:
+        if assertions:
             source_parts.append(assertions)
         
-        # Add testbench
-        source_parts.append(testbench)
+        # Add testbench if provided, otherwise create minimal testbench
+        if testbench:
+            source_parts.append(testbench)
+        else:
+            # Create minimal testbench for constraint checking
+            source_parts.append(create_minimal_testbench())
         
         # Combine all parts
         source = "\n\n".join(source_parts)
         source_file = tmp_path / "design.sv"
         source_file.write_text(source)
         
-        # Prepare Verilator command
+        # Prepare Verilator command with proper SystemVerilog support
         verilator_cmd = [
             "verilator",
             "--cc",  # Create C++ output
             "--exe",  # Create executable
             "--build",  # Build the executable
             "-Wno-fatal",  # Don't stop on first error
+            "--language", "1800-2017",  # SystemVerilog 2017
+            "-Wall",  # Show all warnings
         ]
         
         # Add feature-specific flags
@@ -332,67 +327,40 @@ def run_systemverilog_simulation(user_code: str, testbench: str, constraints: st
         if "coverage" in features:
             verilator_cmd.append("--coverage")
         
+        # Add constraint solver flag if constraints are used
+        if "constraints" in features and constraints:
+            verilator_cmd.append("+define+SYSTEMVERILOG_CONSTRAINTS")
+        
         # Add the source file
         verilator_cmd.append(str(source_file))
         
-        # Add a simple main.cpp for Verilator
-        main_cpp = """
-#include "Vdesign.h"
-#include "verilated.h"
-#include <iostream>
-
-int main(int argc, char** argv) {
-    Verilated::commandArgs(argc, argv);
-    Vdesign* top = new Vdesign;
-    
-    // Reset
-    top->rst_n = 0;
-    top->clk = 0;
-    top->eval();
-    
-    // Release reset
-    for (int i = 0; i < 5; i++) {
-        top->clk = !top->clk;
-        top->eval();
-    }
-    top->rst_n = 1;
-    
-    // Run simulation for 100 cycles
-    for (int i = 0; i < 100; i++) {
-        top->clk = !top->clk;
-        top->eval();
-        
-        // Check for finish
-        if (Verilated::gotFinish()) {
-            std::cout << "Simulation finished early" << std::endl;
-            break;
-        }
-    }
-    
-    top->final();
-    delete top;
-    
-    std::cout << "SystemVerilog simulation completed" << std::endl;
-    return 0;
-}
-"""
+        # Add a better main.cpp for Verilator
+        main_cpp = create_verilator_main(features, expected_output)
         main_file = tmp_path / "main.cpp"
         main_file.write_text(main_cpp)
         verilator_cmd.append(str(main_file))
         
         # Run Verilator
-        compile_result = subprocess.run(
-            verilator_cmd,
-            capture_output=True,
-            text=True,
-            cwd=tmpdir,
-            timeout=60
-        )
+        try:
+            compile_result = subprocess.run(
+                verilator_cmd,
+                capture_output=True,
+                text=True,
+                cwd=tmpdir,
+                timeout=60
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "success": False,
+                "error": "Verilator compilation timeout",
+                "compile_log": "Compilation took too long (60s timeout)",
+                "details": {"timeout": True}
+            }
         
         compile_log = compile_result.stdout + compile_result.stderr
         
         if compile_result.returncode != 0:
-            # Try with simpler flags for basic SystemVerilog
+            # Try simpler approach without language flag
             simple_verilator_cmd = [
                 "verilator",
                 "--cc",
@@ -403,81 +371,284 @@ int main(int argc, char** argv) {
                 str(main_file)
             ]
             
-            compile_result = subprocess.run(
-                simple_verilator_cmd,
-                capture_output=True,
-                text=True,
-                cwd=tmpdir,
-                timeout=60
-            )
-            
-            compile_log = compile_result.stdout + compile_result.stderr
+            try:
+                compile_result = subprocess.run(
+                    simple_verilator_cmd,
+                    capture_output=True,
+                    text=True,
+                    cwd=tmpdir,
+                    timeout=60
+                )
+                compile_log = compile_result.stdout + compile_result.stderr
+            except subprocess.TimeoutExpired:
+                return {
+                    "success": False,
+                    "error": "Verilator compilation timeout (simple mode)",
+                    "compile_log": "Compilation took too long",
+                    "details": {"timeout": True}
+                }
             
             if compile_result.returncode != 0:
                 return {
                     "success": False,
                     "error": "SystemVerilog Compilation Failed",
-                    "compile_log": compile_log,
+                    "compile_log": compile_log[:2000],
                     "details": {"compile_error": True, "language": "systemverilog"}
                 }
         
         # Run the compiled executable
         exec_path = tmp_path / "obj_dir" / "Vdesign"
         if not exec_path.exists():
+            # Try alternative path
             exec_path = tmp_path / "Vdesign"
+            if not exec_path.exists():
+                return {
+                    "success": False,
+                    "error": "Executable not found after compilation",
+                    "compile_log": compile_log,
+                    "details": {"executable_missing": True}
+                }
         
-        run_result = subprocess.run(
-            [str(exec_path)],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+        try:
+            run_result = subprocess.run(
+                [str(exec_path)],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "success": False,
+                "error": "Simulation timeout",
+                "compile_log": compile_log,
+                "run_log": "Simulation took too long (30s timeout)",
+                "details": {"timeout": True}
+            }
         
         run_log = run_result.stdout + run_result.stderr
         
-        # Parse results for assertions and coverage
+        # Parse results
         assertion_results = []
         coverage_data = {}
+        constraint_check = {}
         
-        if "Assertion" in run_log or "assert" in run_log.lower():
-            # Simple assertion parsing
+        # Check for assertion results
+        if "assert" in run_log.lower():
             lines = run_log.split('\n')
             for line in lines:
-                if "assert" in line.lower() and "failed" in line.lower():
+                line_lower = line.lower()
+                if "assertion" in line_lower and "failed" in line_lower:
                     assertion_results.append({
                         "status": "failed",
                         "message": line.strip()
                     })
-                elif "assert" in line.lower() and "passed" in line.lower():
+                elif "assertion" in line_lower and "passed" in line_lower:
                     assertion_results.append({
                         "status": "passed",
                         "message": line.strip()
                     })
         
-        if "coverage" in features:
-            # Simple coverage reporting
-            coverage_data = {
-                "line_coverage": "0%",
-                "toggle_coverage": "0%",
-                "assertion_coverage": "0%"
-            }
+        # Check for constraint satisfaction
+        if "constraints" in features:
+            constraint_check = check_constraints_satisfied(run_log)
         
-        # Check for success
-        success = ("PASS" in run_log or "completed" in run_log or "Simulation completed" in run_log) 
+        # Check for expected output if provided
+        output_matches = True
+        if expected_output:
+            # Clean and compare output
+            cleaned_output = clean_output(run_log)
+            output_matches = expected_output.lower() in cleaned_output.lower()
+        
+        # Determine success
+        success = True
+        error_msg = ""
+        
+        # Check for compilation/simulation errors
+        if "error" in run_log.lower() and "assertion" not in run_log.lower():
+            success = False
+            error_msg = "Simulation error detected"
+        
+        # Check for failed assertions
+        if any(r["status"] == "failed" for r in assertion_results):
+            success = False
+            error_msg = "Assertion failures detected"
+        
+        # Check constraint satisfaction
+        if constraint_check and not constraint_check.get("satisfied", True):
+            success = False
+            error_msg = "Constraints not satisfied"
+        
+        # Check expected output
+        if expected_output and not output_matches:
+            success = False
+            error_msg = "Output doesn't match expected pattern"
+        
+        # Check for PASS/FAIL in output
+        if "FAIL" in run_log.upper() and "PASS" not in run_log.upper():
+            success = False
+            error_msg = "Test failed (FAIL found in output)"
         
         return {
             "success": success,
             "output": run_log,
-            "compile_log": compile_log,
+            "error": error_msg if not success else "",
+            "compile_log": compile_log[:1000],  # Limit compile log size
             "run_log": run_log,
             "assertion_results": assertion_results,
             "coverage": coverage_data,
+            "constraint_check": constraint_check,
             "details": {
                 "language": "systemverilog",
                 "features_used": features,
-                "simulation_completed": True
+                "simulation_completed": True,
+                "output_matches_expected": output_matches if expected_output else None
             }
         }
+
+def create_minimal_testbench() -> str:
+    """Create a minimal testbench for SystemVerilog code"""
+    return """
+module tb;
+    initial begin
+        $display("Starting SystemVerilog simulation...");
+        
+        // Run some cycles
+        #10;
+        
+        // Display completion message
+        $display("Simulation completed");
+        $finish;
+    end
+endmodule
+"""
+
+def create_verilator_main(features: List[str], expected_output: str = "") -> str:
+    """Create C++ main file for Verilator"""
+    
+    main_cpp = '''#include "Vdesign.h"
+#include "verilated.h"
+#include <iostream>
+#include <string>
+#include <regex>
+
+bool check_output_contains(const std::string& output, const std::string& pattern) {
+    if (pattern.empty()) return true;
+    
+    try {
+        std::regex re(pattern, std::regex::icase);
+        return std::regex_search(output, re);
+    } catch (...) {
+        // Fallback to simple substring search
+        std::string output_lower = output;
+        std::string pattern_lower = pattern;
+        std::transform(output_lower.begin(), output_lower.end(), output_lower.begin(), ::tolower);
+        std::transform(pattern_lower.begin(), pattern_lower.end(), pattern_lower.begin(), ::tolower);
+        return output_lower.find(pattern_lower) != std::string::npos;
+    }
+}
+
+int main(int argc, char** argv) {
+    Verilated::commandArgs(argc, argv);
+    
+    // Create instance
+    Vdesign* top = new Vdesign;
+    
+    // Redirect stdout to capture output
+    std::stringstream output_stream;
+    std::streambuf* old_cout = std::cout.rdbuf(output_stream.rdbuf());
+    
+    // Initialize
+    top->eval();
+    
+    // Run simulation
+    int max_cycles = 1000;
+    int cycle = 0;
+    
+    while (cycle < max_cycles && !Verilated::gotFinish()) {
+        top->clk = !top->clk;
+        top->eval();
+        cycle++;
+        
+        // Break early if we see finish
+        if (Verilated::gotFinish()) {
+            break;
+        }
+    }
+    
+    // Final evaluation
+    top->final();
+    
+    // Restore cout
+    std::cout.rdbuf(old_cout);
+    
+    // Get output
+    std::string output = output_stream.str();
+    
+    // Always print the output
+    std::cout << output;
+    
+    // Check for expected output pattern
+    std::string expected = R"exp(''' + expected_output.replace('"', '\\"') + ''')exp";
+    if (!expected.empty() && !check_output_contains(output, expected)) {
+        std::cout << "\\nERROR: Output does not contain expected pattern: " << expected << std::endl;
+    }
+    
+    // Check for common errors
+    if (output.find("Error") != std::string::npos || 
+        output.find("ERROR") != std::string::npos) {
+        std::cout << "\\nERROR detected in simulation output" << std::endl;
+    }
+    
+    delete top;
+    return 0;
+}
+'''
+    return main_cpp
+
+def check_constraints_satisfied(output: str) -> dict:
+    """Check if constraints appear to be satisfied in output"""
+    result = {
+        "satisfied": True,
+        "checks": []
+    }
+    
+    # Look for constraint-related messages
+    lines = output.split('\n')
+    for line in lines:
+        line_lower = line.lower()
+        if "constraint" in line_lower:
+            if "failed" in line_lower or "violat" in line_lower:
+                result["satisfied"] = False
+                result["checks"].append({
+                    "message": line.strip(),
+                    "status": "failed"
+                })
+            elif "satisfied" in line_lower or "passed" in line_lower:
+                result["checks"].append({
+                    "message": line.strip(),
+                    "status": "passed"
+                })
+    
+    return result
+
+def clean_output(output: str) -> str:
+    """Clean simulation output by removing timestamps and other noise"""
+    lines = output.split('\n')
+    cleaned_lines = []
+    
+    for line in lines:
+        # Remove lines with just numbers (timestamps)
+        if re.match(r'^\s*\d+\s*$', line):
+            continue
+        # Remove VCD dump messages
+        if 'VCD' in line and 'dumpfile' in line:
+            continue
+        # Remove empty lines
+        if line.strip() == '':
+            continue
+        cleaned_lines.append(line.strip())
+    
+    return '\n'.join(cleaned_lines)
 
 @app.get("/api/features")
 async def get_features():
@@ -513,7 +684,10 @@ async def health_check():
     
     try:
         verilator_result = subprocess.run(["verilator", "--version"], capture_output=True, text=True)
-        tools["verilator"] = "available" if verilator_result.returncode == 0 else "not available"
+        if verilator_result.returncode == 0:
+            tools["verilator"] = f"available ({verilator_result.stdout.strip()})"
+        else:
+            tools["verilator"] = "not available"
     except:
         tools["verilator"] = "not available"
     

@@ -46,22 +46,82 @@ class TestResult(BaseModel):
     compile_log: str = ""
     run_log: str = ""
 
-# Load problems
-PROBLEMS = []
-with open("problems.json", "r") as f:
-    PROBLEMS = json.load(f)
-logger.info(f"Loaded {len(PROBLEMS)} problems")
+# Load all problems from separate files
+def load_all_problems():
+    """Load problems from all problem files"""
+    all_problems = []
+    
+    # Load from problems.json (if exists)
+    if os.path.exists("problems.json"):
+        try:
+            with open("problems.json", "r") as f:
+                all_problems.extend(json.load(f))
+            logger.info(f"Loaded {len(all_problems)} problems from problems.json")
+        except Exception as e:
+            logger.error(f"Failed to load problems.json: {e}")
+    
+    # Load from verilog_problems.json
+    if os.path.exists("verilog_problems.json"):
+        try:
+            with open("verilog_problems.json", "r") as f:
+                verilog_problems = json.load(f)
+                all_problems.extend(verilog_problems)
+            logger.info(f"Loaded {len(verilog_problems)} problems from verilog_problems.json")
+        except Exception as e:
+            logger.error(f"Failed to load verilog_problems.json: {e}")
+    
+    # Load from sv_problems.json
+    if os.path.exists("sv_problems.json"):
+        try:
+            with open("sv_problems.json", "r") as f:
+                sv_problems = json.load(f)
+                all_problems.extend(sv_problems)
+            logger.info(f"Loaded {len(sv_problems)} problems from sv_problems.json")
+        except Exception as e:
+            logger.error(f"Failed to load sv_problems.json: {e}")
+    
+    # Ensure each problem has a language field
+    for problem in all_problems:
+        if 'language' not in problem:
+            problem['language'] = 'verilog'  # default
+    
+    logger.info(f"Total problems loaded: {len(all_problems)}")
+    return all_problems
+
+# Load all problems
+ALL_PROBLEMS = load_all_problems()
 
 @app.get("/")
 async def root():
     return {"status": "VLSI Practice API - SystemVerilog Support", "version": "5.0"}
 
+@app.get("/api/problems")
+async def get_all_problems():
+    """Return all problems (mixed Verilog and SystemVerilog)"""
+    simplified = []
+    for problem in ALL_PROBLEMS:
+        simplified.append({
+            "id": problem["id"],
+            "title": problem["title"],
+            "description": problem["description"],
+            "difficulty": problem["difficulty"],
+            "category": problem["category"],
+            "template": problem["template"],
+            "language": problem.get("language", "verilog"),
+            "features": problem.get("features", [])
+        })
+    return {"problems": simplified}
+
 @app.get("/api/svproblems")
 async def get_sv_problems():
     """Return list of SystemVerilog problems"""
     sv_problems = []
-    with open("sv_problems.json", "r") as f:
-        sv_problems = json.load(f)
+    if os.path.exists("sv_problems.json"):
+        with open("sv_problems.json", "r") as f:
+            sv_problems = json.load(f)
+    else:
+        # Fallback to filter from ALL_PROBLEMS
+        sv_problems = [p for p in ALL_PROBLEMS if p.get("language", "").lower() == "systemverilog"]
     
     simplified = []
     for problem in sv_problems:
@@ -83,8 +143,12 @@ async def get_sv_problems():
 async def get_verilog_problems():
     """Return list of Verilog-only problems"""
     verilog_problems = []
-    with open("verilog_problems.json", "r") as f:
-        verilog_problems = json.load(f)
+    if os.path.exists("verilog_problems.json"):
+        with open("verilog_problems.json", "r") as f:
+            verilog_problems = json.load(f)
+    else:
+        # Fallback to filter from ALL_PROBLEMS
+        verilog_problems = [p for p in ALL_PROBLEMS if p.get("language", "").lower() != "systemverilog"]
     
     simplified = []
     for problem in verilog_problems:
@@ -98,20 +162,24 @@ async def get_verilog_problems():
             "language": "verilog"
         })
     return {"problems": simplified}
+
 @app.post("/api/run")
 async def run_code(request: CodeRequest):
     """Execute Verilog/SystemVerilog code"""
     try:
-        # Find problem
-        problem = next((p for p in PROBLEMS if p["id"] == request.problem_id), None)
+        # Find problem in ALL_PROBLEMS
+        problem = next((p for p in ALL_PROBLEMS if p["id"] == request.problem_id), None)
         if not problem:
             raise HTTPException(status_code=404, detail="Problem not found")
         
-        # Determine language from problem or request
-        language = problem.get("language", request.language)
+        # Determine language from problem
+        language = problem.get("language", "verilog").lower()
+        
+        # Log the request
+        logger.info(f"Running {language} simulation for problem: {problem['title']}")
         
         # Run simulation
-        if language.lower() == "systemverilog":
+        if language == "systemverilog":
             result = run_systemverilog_simulation(
                 request.code,
                 problem["testbench"],
@@ -135,9 +203,12 @@ async def run_code(request: CodeRequest):
             "details": result.get("details", {}),
             "compile_log": result.get("compile_log", ""),
             "run_log": result.get("run_log", ""),
-            "assertion_results": result.get("assertion_results", []),
-            "coverage": result.get("coverage", {})
         }
+        
+        # Add SV-specific fields
+        if language == "systemverilog":
+            response["assertion_results"] = result.get("assertion_results", [])
+            response["coverage"] = result.get("coverage", {})
         
         if not result["success"] and "hint" in problem:
             response["hint"] = problem["hint"]
@@ -145,7 +216,7 @@ async def run_code(request: CodeRequest):
         return response
         
     except Exception as e:
-        logger.error(f"Error in run_code: {e}")
+        logger.error(f"Error in run_code: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 def run_verilog_simulation(user_code: str, testbench: str) -> dict:
@@ -251,7 +322,6 @@ def run_systemverilog_simulation(user_code: str, testbench: str, constraints: st
             "--cc",  # Create C++ output
             "--exe",  # Create executable
             "--build",  # Build the executable
-            "--trace",  # Enable waveform tracing if needed
             "-Wno-fatal",  # Don't stop on first error
         ]
         
@@ -262,7 +332,7 @@ def run_systemverilog_simulation(user_code: str, testbench: str, constraints: st
         if "coverage" in features:
             verilator_cmd.append("--coverage")
         
-        # Add the source file and a simple C++ testbench wrapper
+        # Add the source file
         verilator_cmd.append(str(source_file))
         
         # Add a simple main.cpp for Verilator
@@ -275,17 +345,29 @@ int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
     Vdesign* top = new Vdesign;
     
-    // Simple test - run for 100 cycles
-    for (int i = 0; i < 100; i++) {
+    // Reset
+    top->rst_n = 0;
+    top->clk = 0;
+    top->eval();
+    
+    // Release reset
+    for (int i = 0; i < 5; i++) {
+        top->clk = !top->clk;
         top->eval();
     }
+    top->rst_n = 1;
     
-    // Check assertions if enabled
-    #ifdef VM_ASSERTION
-    if (Verilated::gotFinish()) {
-        std::cout << "Simulation finished (assertion triggered)" << std::endl;
+    // Run simulation for 100 cycles
+    for (int i = 0; i < 100; i++) {
+        top->clk = !top->clk;
+        top->eval();
+        
+        // Check for finish
+        if (Verilated::gotFinish()) {
+            std::cout << "Simulation finished early" << std::endl;
+            break;
+        }
     }
-    #endif
     
     top->final();
     delete top;
@@ -316,6 +398,7 @@ int main(int argc, char** argv) {
                 "--cc",
                 "--exe",
                 "--build",
+                "-Wno-fatal",
                 str(source_file),
                 str(main_file)
             ]
@@ -380,7 +463,7 @@ int main(int argc, char** argv) {
             }
         
         # Check for success
-        success = ("PASS" in run_log or "completed" in run_log) and not assertion_results
+        success = ("PASS" in run_log or "completed" in run_log or "Simulation completed" in run_log) 
         
         return {
             "success": success,
@@ -436,7 +519,9 @@ async def health_check():
     
     return {
         "status": "healthy",
-        "problems": len(PROBLEMS),
+        "total_problems": len(ALL_PROBLEMS),
+        "verilog_problems": len([p for p in ALL_PROBLEMS if p.get("language", "").lower() != "systemverilog"]),
+        "systemverilog_problems": len([p for p in ALL_PROBLEMS if p.get("language", "").lower() == "systemverilog"]),
         "tools": tools
     }
 

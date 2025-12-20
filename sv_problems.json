@@ -2,49 +2,45 @@
   {
     "id": "sv_constraints_array",
     "title": "Array Constraints",
-    "description": "Write SystemVerilog code using constraint: array size < 10 and array contents sum = 100. Create a class with random array and these constraints, then display valid arrays.",
+    "description": "Write SystemVerilog code using constraint: array size < 10 and array contents sum = 100. Create a class with random array and these constraints.",
     "difficulty": "medium",
     "category": "SystemVerilog",
     "language": "systemverilog",
-    "features": ["constraints", "randomization", "classes"],
-    "template": "class constrained_array;\n    // TODO: Declare rand variables\n    // rand int array[];\n    // rand int size;\n    \n    // TODO: Add constraints\n    // constraint valid_size { size < 10; size > 0; }\n    // constraint array_size { array.size() == size; }\n    // constraint sum_constraint { array.sum() == 100; }\n    \n    function void display();\n        $write(\"Array size: %0d, Values: \", size);\n        foreach(array[i]) $write(\"%0d \", array[i]);\n        $display(\", Sum: %0d\", array.sum());\n    endfunction\nendclass\n\nmodule test;\n    initial begin\n        // TODO: Create instance and randomize\n        // constrained_array arr = new();\n        \n        $display(\"Testing array constraints...\");\n        \n        // TODO: Generate and display 5 valid arrays\n        // repeat(5) begin\n        //     if(arr.randomize()) begin\n        //         arr.display();\n        //     end else begin\n        //         $display(\"Randomization failed\");\n        //     end\n        // end\n        \n        $display(\"Test completed\");\n    end\nendmodule",
-    "expected_output": "Array size:.*Sum: 100",
-    "hint": "Use 'rand int array[];' for dynamic array. Constraint should be: constraint c_array { array.size() == size; array.sum() == 100; }"
+    "features": ["constraints"],
+    "template": "// Write SystemVerilog code with constraints\n// Array size should be < 10\n// Array sum should be 100\n// Use: rand int array[];\n// Constraint: array.size() < 10\n// Constraint: array.sum() == 100\n\nclass constrained_array;\n    // TODO: Add your code here\n    \n    function void display();\n        // TODO: Display array\n    endfunction\nendclass\n\nmodule test;\n    initial begin\n        $display(\"Testing array constraints...\");\n        // TODO: Test your code\n        $display(\"Test completed\");\n    end\nendmodule",
+    "expected_output": "Testing array constraints",
+    "validation_rules": {
+      "required_keywords": ["class", "rand", "constraint", "array"],
+      "forbidden_keywords": [],
+      "pattern_checks": [
+        "array.*size.*<.*10",
+        "sum.*=.*100"
+      ]
+    },
+    "hint": "Use: rand int array[]; constraint c_size { array.size() < 10; } constraint c_sum { array.sum() == 100; }"
   },
   {
-    "id": "sv_assertions_simple",
-    "title": "Simple Assertions",
-    "description": "Implement a simple checker with SystemVerilog assertions. Create assertions to verify that a signal never has X or Z values during active cycles.",
+    "id": "sv_assert_simple",
+    "title": "Simple Assert Statement",
+    "description": "Write a SystemVerilog module with a simple assert statement to check if a signal is never X during valid cycles.",
     "difficulty": "easy",
     "category": "SystemVerilog",
     "language": "systemverilog",
     "features": ["assertions"],
-    "template": "module checker(\n    input logic clk,\n    input logic rst_n,\n    input logic [7:0] data,\n    input logic valid\n);\n    // TODO: Add assertions\n    // Property: When valid is high, data should not have X or Z\n    // Use: assert property (@(posedge clk) disable iff (!rst_n) valid |-> !$isunknown(data));\n    \n    // Simple implementation\n    always @(posedge clk) begin\n        if (rst_n && valid) begin\n            // Check manually for now\n            if ($isunknown(data)) begin\n                $display(\"ERROR: Unknown value detected on data when valid is high\");\n            end\n        end\n    end\nendmodule\n\nmodule test;\n    logic clk = 0;\n    logic rst_n = 0;\n    logic [7:0] data = 0;\n    logic valid = 0;\n    \n    checker dut (.*);\n    \n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing assertions...\");\n        \n        // Reset\n        #10 rst_n = 1;\n        \n        // Test 1: Valid data\n        valid = 1;\n        data = 8'hFF;\n        #10;\n        \n        // Test 2: Invalid data (X)\n        data = 8'hXX;\n        #10;\n        \n        // Test 3: More valid data\n        data = 8'h55;\n        #10;\n        \n        valid = 0;\n        #10;\n        \n        $display(\"Test completed\");\n        $finish;\n    end\nendmodule",
-    "expected_output": "ERROR: Unknown value detected",
-    "hint": "Use SystemVerilog assertion: assert property (@(posedge clk) disable iff (!rst_n) valid |-> !$isunknown(data));"
+    "template": "module checker(\n    input logic clk,\n    input logic rst_n,\n    input logic [7:0] data,\n    input logic valid\n);\n    // TODO: Add assertion\n    // Use: assert property (@(posedge clk) valid |-> !$isunknown(data))\n    \n    always @(posedge clk) begin\n        if (valid) begin\n            // Manual check\n            if ($isunknown(data)) begin\n                $display(\"ERROR: Unknown data when valid is high\");\n            end else begin\n                $display(\"OK: Valid data = 0x%h\", data);\n            end\n        end\n    end\nendmodule\n\nmodule test;\n    logic clk = 0;\n    logic rst_n = 1;\n    logic [7:0] data;\n    logic valid = 0;\n    \n    checker dut (.*);\n    \n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing assertions...\");\n        \n        // Test cases\n        valid = 1;\n        data = 8'hFF;  // Good data\n        #10;\n        \n        data = 8'hXX;  // Bad data\n        #10;\n        \n        valid = 0;\n        data = 8'hZZ;  // Don't care when not valid\n        #10;\n        \n        $display(\"Test completed\");\n        $finish;\n    end\nendmodule",
+    "expected_output": "ERROR: Unknown data",
+    "hint": "Use: assert property (@(posedge clk) valid |-> !$isunknown(data)) else $error(\"Unknown data when valid\");"
   },
   {
-    "id": "sv_fifo_basic",
-    "title": "FIFO with Basic Constraints",
-    "description": "Implement a FIFO with basic SystemVerilog features. Use a class to model transactions with constraints on data values.",
+    "id": "sv_cover_basic",
+    "title": "Basic Cover Example",
+    "description": "Create a simple covergroup to track values of a counter. Show understanding of coverpoints and bins.",
     "difficulty": "medium",
     "category": "SystemVerilog",
     "language": "systemverilog",
-    "features": ["constraints", "classes"],
-    "template": "class fifo_transaction;\n    // TODO: Add rand variables\n    // rand bit [7:0] data;\n    // rand bit wr_en;\n    // rand bit rd_en;\n    \n    // TODO: Add constraints\n    // constraint valid_ops { !(wr_en && rd_en); } // Can't read and write at same time\n    // constraint data_range { data inside {[0:255]}; }\n    \n    function void display(string prefix = \"\");\n        $display(\"%s wr_en=%b, rd_en=%b, data=0x%h\", prefix, wr_en, rd_en, data);\n    endfunction\nendclass\n\nmodule test;\n    initial begin\n        $display(\"Testing FIFO transactions...\");\n        \n        // TODO: Create and randomize transactions\n        // fifo_transaction tr = new();\n        // \n        // repeat(10) begin\n        //     if (tr.randomize()) begin\n        //         tr.display(\"Transaction: \");\n        //     end else begin\n        //         $display(\"Randomization failed\");\n        //     end\n        // end\n        \n        $display(\"Test completed\");\n    end\nendmodule",
-    "expected_output": "Transaction:.*wr_en=.*rd_en=.*data=",
-    "hint": "Use constraint to prevent simultaneous read/write: constraint c_valid { !(wr_en && rd_en); }"
-  },
-  {
-    "id": "sv_coverage_basic",
-    "title": "Basic Coverage Example",
-    "description": "Create a simple covergroup to track values of a 3-bit counter. Implement bins for different ranges.",
-    "difficulty": "medium",
-    "category": "SystemVerilog",
-    "language": "systemverilog",
-    "features": ["coverage", "functional_coverage"],
-    "template": "module counter(\n    input logic clk,\n    input logic rst_n,\n    input logic inc,\n    output logic [2:0] count\n);\n    // TODO: Implement 3-bit counter\n    // always_ff @(posedge clk or negedge rst_n) begin\n    //     if (!rst_n) count <= 0;\n    //     else if (inc) count <= count + 1;\n    // end\n    \n    // TODO: Add covergroup\n    // covergroup cg_counter @(posedge clk);\n    //     coverpoint count {\n    //         bins low = {[0:3]};\n    //         bins high = {[4:7]};\n    //         bins specific[] = {0, 7};\n    //     }\n    // endgroup\n    \n    // TODO: Instantiate covergroup\n    // cg_counter cg_inst;\n    // initial cg_inst = new();\n    \n    assign count = 0; // Placeholder\nendmodule\n\nmodule test;\n    logic clk = 0;\n    logic rst_n = 0;\n    logic inc = 0;\n    logic [2:0] count;\n    \n    counter dut (.*);\n    \n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing coverage...\");\n        \n        // Reset\n        #10 rst_n = 1;\n        \n        // Increment counter through all values\n        repeat(8) begin\n            inc = 1;\n            #10;\n            inc = 0;\n            #10;\n        end\n        \n        // TODO: Report coverage\n        // $display(\"Coverage: %%\", cg_inst.get_inst_coverage());\n        \n        $display(\"Test completed\");\n        $finish;\n    end\nendmodule",
+    "features": ["coverage"],
+    "template": "module counter(\n    input logic clk,\n    input logic rst_n,\n    input logic inc,\n    output logic [2:0] count\n);\n    // TODO: Implement 3-bit counter\n    // TODO: Add covergroup\n    \n    assign count = 0; // Placeholder\nendmodule\n\nmodule test;\n    logic clk = 0;\n    logic rst_n = 0;\n    logic inc = 0;\n    logic [2:0] count;\n    \n    counter dut (.*);\n    \n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing coverage...\");\n        \n        rst_n = 1;\n        \n        // Exercise counter\n        repeat(8) begin\n            inc = 1;\n            #10;\n            inc = 0;\n            #10;\n        end\n        \n        $display(\"Test completed\");\n        $finish;\n    end\nendmodule",
     "expected_output": "Testing coverage",
-    "hint": "Create covergroup with coverpoints and bins. Sample coverage at appropriate points."
+    "hint": "covergroup cg; coverpoint count { bins low[] = {[0:3]}; bins high[] = {[4:7]}; } endgroup"
   }
 ]

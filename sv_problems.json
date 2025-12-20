@@ -11,14 +11,39 @@
     "hint": "Use: rand int array[]; constraint c_size { array.size() < 10; } constraint c_sum { array.sum() == 100; }"
   },
   {
+    "id": "sv_counter",
+    "title": "SystemVerilog Counter",
+    "description": "Implement a simple 8-bit counter with enable and reset using SystemVerilog always_ff.",
+    "difficulty": "easy",
+    "category": "SystemVerilog",
+    "language": "systemverilog",
+    "features": ["modules", "sequential"],
+    "template": "module counter(\n    input logic clk,\n    input logic rst_n,\n    input logic enable,\n    output logic [7:0] count\n);\n    // TODO: Implement 8-bit counter\n    // Use always_ff @(posedge clk or negedge rst_n)\n    // Reset to 0, increment when enable is high\n    \n    // Placeholder\n    assign count = 8'b0;\nendmodule\n\nmodule tb;\n    logic clk = 0;\n    logic rst_n = 1;\n    logic enable = 0;\n    logic [7:0] count;\n    \n    counter dut (.*);\n    \n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing counter...\");\n        \n        // Reset\n        rst_n = 0;\n        #10;\n        rst_n = 1;\n        \n        // Test 1: Count with enable\n        enable = 1;\n        repeat(5) @(posedge clk);\n        if (count !== 5) $display(\"ERROR: Expected 5, got %0d\", count);\n        else $display(\"PASS: Count = %0d\", count);\n        \n        // Test 2: Disable\n        enable = 0;\n        @(posedge clk);\n        if (count !== 5) $display(\"ERROR: Should stay at 5, got %0d\", count);\n        else $display(\"PASS: Count stayed at 5\");\n        \n        // Test 3: Reset\n        rst_n = 0;\n        @(posedge clk);\n        if (count !== 0) $display(\"ERROR: Should reset to 0, got %0d\", count);\n        else $display(\"PASS: Reset to 0\");\n        \n        $display(\"Test completed\");\n        $finish;\n    end\nendmodule",
+    "expected_output": "PASS",
+    "hint": "Use: always_ff @(posedge clk or negedge rst_n) begin if (!rst_n) count <= 0; else if (enable) count <= count + 1; end"
+  },
+  {
+    "id": "sv_fifo_simple",
+    "title": "Simple FIFO",
+    "description": "Implement a basic FIFO with write and read pointers using SystemVerilog.",
+    "difficulty": "medium",
+    "category": "SystemVerilog",
+    "language": "systemverilog",
+    "features": ["modules", "memory"],
+    "template": "module fifo #(\n    parameter WIDTH = 8,\n    parameter DEPTH = 16\n) (\n    input logic clk,\n    input logic rst_n,\n    input logic wr_en,\n    input logic rd_en,\n    input logic [WIDTH-1:0] data_in,\n    output logic [WIDTH-1:0] data_out,\n    output logic full,\n    output logic empty\n);\n    // TODO: Implement FIFO\n    // Use memory array and pointers\n    // logic [WIDTH-1:0] mem [0:DEPTH-1];\n    // logic [$clog2(DEPTH)-1:0] wr_ptr, rd_ptr;\n    // logic [$clog2(DEPTH):0] count;\n    \n    assign full = 0;\n    assign empty = 1;\n    assign data_out = 0;\nendmodule\n\nmodule tb;\n    logic clk = 0;\n    logic rst_n = 1;\n    logic wr_en = 0;\n    logic rd_en = 0;\n    logic [7:0] data_in = 0;\n    logic [7:0] data_out;\n    logic full, empty;\n    \n    fifo #(.WIDTH(8), .DEPTH(4)) dut (.*);\n    \n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing FIFO...\");\n        \n        rst_n = 0;\n        #10;\n        rst_n = 1;\n        \n        // Write 4 values\n        for (int i = 0; i < 4; i++) begin\n            wr_en = 1;\n            data_in = i + 1;\n            @(posedge clk);\n        end\n        wr_en = 0;\n        \n        // Read 4 values\n        for (int i = 0; i < 4; i++) begin\n            rd_en = 1;\n            @(posedge clk);\n            if (data_out !== i + 1) $display(\"ERROR: Expected %0d, got %0d\", i+1, data_out);\n            else $display(\"PASS: Read %0d\", data_out);\n        end\n        rd_en = 0;\n        \n        $display(\"Test completed\");\n        $finish;\n    end\nendmodule",
+    "expected_output": "PASS",
+    "hint": "Use: always_ff @(posedge clk or negedge rst_n) begin if (!rst_n) begin wr_ptr <= 0; rd_ptr <= 0; count <= 0; end else begin ... end end"
+  },
+  {
     "id": "sv_assert_simple",
-    "title": "Simple Assertions",
-    "description": "Write a SystemVerilog assertion to check that data is never X when valid is high.",
+    "title": "Simple Assert Statement",
+    "description": "Add a SystemVerilog assert statement to check a condition.",
     "difficulty": "easy",
     "category": "SystemVerilog",
     "language": "systemverilog",
     "features": ["assertions"],
-    "template": "module data_checker(\n    input logic clk,\n    input logic rst_n,\n    input logic [7:0] data,\n    input logic valid\n);\n    // TODO: Add assertion\n    // Should check: valid -> !$isunknown(data)\n    \n    // Also add manual check for debugging\n    always @(posedge clk) begin\n        if (valid && $isunknown(data)) begin\n            $display(\"ERROR: Unknown data when valid!\");\n        end\n    end\nendmodule\n\nmodule test;\n    logic clk = 0;\n    logic rst_n = 1;\n    logic [7:0] data;\n    logic valid;\n    \n    data_checker dut (.*);\n    \n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing assertions...\");\n        \n        // Test cases\n        valid = 1; data = 8'hFF; #10;\n        valid = 1; data = 8'hXX; #10;\n        valid = 0; data = 8'hZZ; #10;\n        \n        $display(\"Test completed\");\n        $finish;\n    end\nendmodule",
-    "hint": "Use: assert property (@(posedge clk) disable iff (!rst_n) valid |-> !$isunknown(data));"
+    "template": "module checker(\n    input logic clk,\n    input logic rst_n,\n    input logic [3:0] value,\n    input logic valid\n);\n    // TODO: Add assertion\n    // Check that value is never 0 when valid is 1\n    // Use: assert property (@(posedge clk) disable iff (!rst_n) valid |-> value != 0);\n    \n    // Also add manual check\n    always @(posedge clk) begin\n        if (rst_n && valid && value == 0) begin\n            $display(\"ERROR: value is 0 when valid!\");\n        end\n    end\nendmodule\n\nmodule tb;\n    logic clk = 0;\n    logic rst_n = 1;\n    logic [3:0] value;\n    logic valid;\n    \n    checker dut (.*);\n    \n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing assertion...\");\n        \n        rst_n = 0;\n        #10;\n        rst_n = 1;\n        \n        // Good case\n        valid = 1; value = 5; #10;\n        $display(\"Good case passed\");\n        \n        // Bad case (should trigger error)\n        valid = 1; value = 0; #10;\n        $display(\"Bad case tested\");\n        \n        // Not valid, value doesn't matter\n        valid = 0; value = 0; #10;\n        $display(\"Not valid case\");\n        \n        $display(\"Test completed\");\n        #100 $finish;\n    end\nendmodule",
+    "expected_output": "ERROR: value is 0 when valid!",
+    "hint": "Use: assert property (@(posedge clk) disable iff (!rst_n) valid |-> value != 0) else $error(\"value is 0 when valid\");"
   }
 ]

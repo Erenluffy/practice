@@ -56,11 +56,15 @@ logger.info(f"Loaded {len(PROBLEMS)} problems")
 async def root():
     return {"status": "VLSI Practice API - SystemVerilog Support", "version": "5.0"}
 
-@app.get("/api/problems")
-async def get_problems():
-    """Return list of available problems"""
+@app.get("/api/svproblems")
+async def get_sv_problems():
+    """Return list of SystemVerilog problems"""
+    sv_problems = []
+    with open("sv_problems.json", "r") as f:
+        sv_problems = json.load(f)
+    
     simplified = []
-    for problem in PROBLEMS:
+    for problem in sv_problems:
         simplified.append({
             "id": problem["id"],
             "title": problem["title"],
@@ -68,11 +72,32 @@ async def get_problems():
             "difficulty": problem["difficulty"],
             "category": problem["category"],
             "template": problem["template"],
-            "language": problem.get("language", "verilog"),
-            "features": problem.get("features", [])
+            "language": problem.get("language", "systemverilog"),
+            "features": problem.get("features", []),
+            "constraints": problem.get("constraints", ""),
+            "assertions": problem.get("assertions", "")
         })
     return {"problems": simplified}
 
+@app.get("/api/verilog/problems")
+async def get_verilog_problems():
+    """Return list of Verilog-only problems"""
+    verilog_problems = []
+    with open("verilog_problems.json", "r") as f:
+        verilog_problems = json.load(f)
+    
+    simplified = []
+    for problem in verilog_problems:
+        simplified.append({
+            "id": problem["id"],
+            "title": problem["title"],
+            "description": problem["description"],
+            "difficulty": problem["difficulty"],
+            "category": problem["category"],
+            "template": problem["template"],
+            "language": "verilog"
+        })
+    return {"problems": simplified}
 @app.post("/api/run")
 async def run_code(request: CodeRequest):
     """Execute Verilog/SystemVerilog code"""

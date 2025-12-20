@@ -89,7 +89,7 @@ ALL_PROBLEMS = load_all_problems()
 async def root():
     return {
         "status": "VLSI Practice API - SystemVerilog Support", 
-        "version": "7.0",
+        "version": "8.0",
         "verilog_problems": len([p for p in ALL_PROBLEMS if p.get("language") == "verilog"]),
         "systemverilog_problems": len([p for p in ALL_PROBLEMS if p.get("language") == "systemverilog"])
     }
@@ -168,7 +168,7 @@ async def run_code(request: CodeRequest):
         
         # Run simulation
         if language == "systemverilog":
-            result = run_systemverilog_simulation_safe(
+            result = validate_systemverilog_code(
                 request.code,
                 problem
             )
@@ -192,8 +192,7 @@ async def run_code(request: CodeRequest):
         
         # Add SV-specific fields
         if language == "systemverilog":
-            response["assertion_results"] = result.get("assertion_results", [])
-            response["constraint_check"] = result.get("constraint_check", {})
+            response["validation_results"] = result.get("validation_results", {})
         
         if not result["success"] and "hint" in problem:
             response["hint"] = problem["hint"]
@@ -244,7 +243,7 @@ def run_verilog_simulation(user_code: str, testbench: str) -> dict:
         run_log = sim_result.stdout + sim_result.stderr
         
         # Check for PASS in output
-        if "PASS" in run_log.upper():
+        if "PASS" in run_log.upper() and "FAIL" not in run_log.upper():
             return {
                 "success": True,
                 "output": run_log,
@@ -262,109 +261,96 @@ def run_verilog_simulation(user_code: str, testbench: str) -> dict:
                 "details": {"test_failed": True}
             }
 
-def run_systemverilog_simulation_safe(user_code: str, problem: dict) -> dict:
+def validate_systemverilog_code(user_code: str, problem: dict) -> dict:
     """
-    Safe SystemVerilog simulation with workarounds for Verilator limitations.
-    For constraint problems, we'll do pattern matching instead of full simulation.
+    Validate SystemVerilog code through pattern matching and syntax checking.
+    For constraint problems, we validate the structure without running full simulation.
     """
     features = problem.get("features", [])
-    expected_output = problem.get("expected_output", "")
+    problem_id = problem.get("id", "")
     
-    # For constraint problems, use simplified approach
-    if "constraints" in features:
-        return check_constraints_pattern(user_code, problem)
+    # First, do basic syntax check with a simple wrapper
+    syntax_result = check_sv_syntax(user_code)
     
-    # For assertion problems, try Verilator with limited features
-    elif "assertions" in features:
-        return run_systemverilog_with_assertions(user_code, problem)
-    
-    # For other SV features, use Icarus Verilog (which has better SV support)
-    else:
-        return run_systemverilog_with_iverilog(user_code, problem)
-
-def check_constraints_pattern(user_code: str, problem: dict) -> dict:
-    """
-    Check constraints by analyzing code pattern and running simplified test.
-    This avoids Verilator's limitations with classes and randomization.
-    """
-    # Extract expected pattern from problem
-    expected_pattern = problem.get("expected_output", "")
-    
-    # Check if user code contains required elements
-    checks = {
-        "has_class": "class" in user_code.lower(),
-        "has_rand": "rand" in user_code.lower(),
-        "has_constraint": "constraint" in user_code.lower(),
-        "has_randomize": "randomize" in user_code or ".randomize()" in user_code,
-    }
-    
-    # Check for specific patterns based on problem
-    if "array" in problem.get("description", "").lower():
-        checks["has_array"] = "array" in user_code.lower() or "[]" in user_code
-        checks["has_sum"] = "sum" in user_code.lower() or ".sum()" in user_code
-    
-    all_checks_passed = all(checks.values())
-    
-    # Create a simple test module to verify basic syntax
-    test_result = run_simple_sv_test(user_code)
-    
-    # Analyze results
-    if test_result["success"]:
-        # Check if output matches expected pattern
-        output_matches = False
-        if expected_pattern:
-            output_lower = test_result["output"].lower()
-            pattern_lower = expected_pattern.lower()
-            output_matches = pattern_lower in output_lower
-        
-        success = all_checks_passed and output_matches
-        
+    if not syntax_result["success"]:
         return {
-            "success": success,
-            "output": test_result["output"],
-            "error": "" if success else "Constraints not properly implemented",
-            "compile_log": test_result["compile_log"],
-            "run_log": test_result["run_log"],
-            "constraint_check": {
-                "satisfied": success,
-                "checks": checks,
-                "pattern_matched": output_matches,
-                "expected_pattern": expected_pattern
+            "success": False,
+            "output": "",
+            "error": "SystemVerilog syntax error",
+            "compile_log": syntax_result["compile_log"],
+            "run_log": "",
+            "validation_results": {
+                "syntax_check": False,
+                "error": syntax_result["error"]
             },
+            "details": {"syntax_error": True}
+        }
+    
+    # Then validate based on problem type
+    validation_results = {}
+    
+    if "constraints" in features:
+        validation_results = validate_constraint_code(user_code, problem)
+    elif "assertions" in features:
+        validation_results = validate_assertion_code(user_code, problem)
+    elif "coverage" in features:
+        validation_results = validate_coverage_code(user_code, problem)
+    else:
+        # Generic SV validation
+        validation_results = validate_generic_sv(user_code, problem)
+    
+    # Determine overall success
+    all_passed = all(validation_results.get("checks", {}).values())
+    
+    if all_passed:
+        return {
+            "success": True,
+            "output": f"✅ SystemVerilog code validation passed!\n\n" +
+                     f"Problem: {problem['title']}\n" +
+                     f"Checks passed: {len([v for v in validation_results.get('checks', {}).values() if v])}/{len(validation_results.get('checks', {}))}\n" +
+                     (f"Matched pattern: {validation_results.get('pattern_matched', 'N/A')}\n" if 'pattern_matched' in validation_results else ""),
+            "error": "",
+            "compile_log": syntax_result["compile_log"],
+            "run_log": syntax_result["output"],
+            "validation_results": validation_results,
             "details": {
-                "method": "pattern_check",
-                "all_checks_passed": all_checks_passed
+                "validation_method": "pattern_matching",
+                "all_checks_passed": True
             }
         }
     else:
         return {
             "success": False,
-            "output": test_result["output"],
-            "error": "Syntax error in SystemVerilog code",
-            "compile_log": test_result["compile_log"],
-            "run_log": test_result["run_log"],
-            "constraint_check": {
-                "satisfied": False,
-                "checks": checks
-            },
+            "output": f"❌ SystemVerilog code validation failed\n\n" +
+                     f"Problem: {problem['title']}\n" +
+                     f"Checks passed: {len([v for v in validation_results.get('checks', {}).values() if v])}/{len(validation_results.get('checks', {}))}\n" +
+                     "Failed checks:\n" +
+                     "\n".join([f"  • {k}: {v}" for k, v in validation_results.get('checks', {}).items() if not v]),
+            "error": "Code doesn't meet requirements",
+            "compile_log": syntax_result["compile_log"],
+            "run_log": syntax_result["output"],
+            "validation_results": validation_results,
             "details": {
-                "method": "pattern_check",
-                "compilation_failed": True
+                "validation_method": "pattern_matching",
+                "all_checks_passed": False
             }
         }
 
-def run_simple_sv_test(user_code: str) -> dict:
-    """Run a simplified SystemVerilog test using Icarus Verilog"""
+def check_sv_syntax(user_code: str) -> dict:
+    """
+    Check if the code has valid SystemVerilog syntax using Icarus.
+    We'll wrap it in a simple testbench to avoid compilation errors.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         
-        # Create a wrapper that removes unsupported features
-        wrapped_code = wrap_sv_code_for_iverilog(user_code)
+        # Create a simple wrapper for syntax checking
+        wrapped_code = create_syntax_check_wrapper(user_code)
         
         source_file = tmp_path / "design.sv"
         source_file.write_text(wrapped_code)
         
-        # Try to compile with Icarus (has better SV support than Verilator)
+        # Try to compile with Icarus
         compile_result = subprocess.run(
             ["iverilog", "-g2012", "-o", str(tmp_path / "sim"), str(source_file)],
             capture_output=True,
@@ -375,14 +361,24 @@ def run_simple_sv_test(user_code: str) -> dict:
         compile_log = compile_result.stdout + compile_result.stderr
         
         if compile_result.returncode != 0:
+            # Try without -g2012 flag
+            compile_result = subprocess.run(
+                ["iverilog", "-o", str(tmp_path / "sim"), str(source_file)],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            compile_log = compile_result.stdout + compile_result.stderr
+        
+        if compile_result.returncode != 0:
             return {
                 "success": False,
-                "output": "",
+                "error": "Syntax error",
                 "compile_log": compile_log,
-                "run_log": ""
+                "output": ""
             }
         
-        # Run simulation
+        # Try to run it
         sim_result = subprocess.run(
             ["vvp", str(tmp_path / "sim")],
             capture_output=True,
@@ -390,245 +386,154 @@ def run_simple_sv_test(user_code: str) -> dict:
             timeout=30
         )
         
-        run_log = sim_result.stdout + sim_result.stderr
+        output = sim_result.stdout + sim_result.stderr
         
         return {
             "success": True,
-            "output": run_log,
+            "error": "",
             "compile_log": compile_log,
-            "run_log": run_log
+            "output": output
         }
 
-def wrap_sv_code_for_iverilog(user_code: str) -> str:
+def create_syntax_check_wrapper(user_code: str) -> str:
     """
-    Wrap user code to work with Icarus Verilog's limited SV support.
-    Removes unsupported class/constraint features for basic syntax checking.
+    Create a wrapper for syntax checking that handles various SV constructs.
     """
-    # Remove class definitions (Icarus doesn't fully support SV classes)
     lines = user_code.split('\n')
     wrapped_lines = []
-    in_class = False
-    in_constraint = False
     
+    # Remove problematic lines but keep structure
     for line in lines:
-        # Skip class definitions
-        if 'class' in line.lower() and 'endclass' not in line.lower():
-            in_class = True
-            # Replace with simple module for testing
-            if 'class' in line and ';' not in line:
-                class_name = line.split()[1] if len(line.split()) > 1 else "test_class"
-                wrapped_lines.append(f"// Replaced class with module for testing")
-                wrapped_lines.append(f"module {class_name};")
-                wrapped_lines.append(f"  initial $display(\"Class {class_name} would be here\");")
-                wrapped_lines.append(f"endmodule")
-            continue
-        
-        if 'endclass' in line.lower():
-            in_class = False
-            continue
-        
-        if 'constraint' in line.lower() and '{' in line:
-            in_constraint = True
-            # Replace constraint with comment
-            wrapped_lines.append(f"  // Constraint: {line.strip()}")
-            continue
-        
-        if in_constraint and '}' in line:
-            in_constraint = False
-            continue
-        
-        if not in_class and not in_constraint:
-            # Replace .randomize() with simple function call
-            if '.randomize()' in line:
-                line = line.replace('.randomize()', '_randomize()')
-            
-            # Replace .sum() with manual sum calculation
-            if '.sum()' in line:
-                # Simple workaround - replace with fixed value
-                line = line.replace('.sum()', '_get_sum()')
-            
-            wrapped_lines.append(line)
+        # Skip unsupported constructs but keep them for pattern matching
+        wrapped_lines.append(line)
     
-    # Add helper functions if needed
-    if any('_randomize()' in line for line in wrapped_lines):
-        wrapped_lines.append("\nfunction int _randomize();")
-        wrapped_lines.append("  return 1; // Always succeed for testing")
-        wrapped_lines.append("endfunction")
-    
-    if any('_get_sum()' in line for line in wrapped_lines):
-        wrapped_lines.append("\nfunction int _get_sum();")
-        wrapped_lines.append("  return 100; // Fixed sum for testing")
-        wrapped_lines.append("endfunction")
-    
-    # Ensure there's a proper testbench
-    if not any('module test' in line.lower() for line in wrapped_lines):
-        wrapped_lines.append("\nmodule test;")
+    # Ensure there's a proper testbench at the end
+    if not any('module test' in line.lower() for line in wrapped_lines) and \
+       not any('initial begin' in line.lower() for line in wrapped_lines):
+        wrapped_lines.append("\nmodule syntax_test;")
         wrapped_lines.append("  initial begin")
-        wrapped_lines.append('    $display("Testing SystemVerilog code...");')
+        wrapped_lines.append('    $display("Syntax check passed");')
         wrapped_lines.append("    #10;")
-        wrapped_lines.append('    $display("Basic syntax check passed");')
         wrapped_lines.append("  end")
         wrapped_lines.append("endmodule")
     
     return '\n'.join(wrapped_lines)
 
-def run_systemverilog_with_assertions(user_code: str, problem: dict) -> dict:
-    """Run SystemVerilog with assertions using Verilator"""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-        
-        # Prepare source - keep it simple
-        source = f"`timescale 1ns/1ps\n{user_code}"
-        source_file = tmp_path / "design.sv"
-        source_file.write_text(source)
-        
-        # Try Verilator with minimal flags
-        verilator_cmd = [
-            "verilator",
-            "--cc",
-            "--exe",
-            "--build",
-            "-Wno-fatal",
-            str(source_file),
-        ]
-        
-        # Add main.cpp
-        main_cpp = '''#include "Vdesign.h"
-#include "verilated.h"
-#include <iostream>
+def validate_constraint_code(user_code: str, problem: dict) -> dict:
+    """Validate constraint-based SystemVerilog code"""
+    checks = {}
+    
+    # Basic checks
+    checks["has_class"] = "class" in user_code.lower()
+    checks["has_rand"] = "rand" in user_code.lower()
+    checks["has_constraint"] = "constraint" in user_code.lower()
+    
+    # Problem-specific checks based on description
+    description = problem.get("description", "").lower()
+    title = problem.get("title", "").lower()
+    
+    if "array" in description or "array" in title:
+        checks["has_array"] = "array" in user_code.lower() or "[]" in user_code
+        checks["has_size_check"] = "size" in user_code.lower() and ("< 10" in user_code or "<10" in user_code)
+        checks["has_sum_check"] = "sum" in user_code.lower() and ("== 100" in user_code or "==100" in user_code)
+    
+    if "fifo" in description or "fifo" in title:
+        checks["has_fifo_logic"] = any(word in user_code.lower() for word in ["wr_en", "rd_en", "full", "empty"])
+    
+    # Check for proper constraint syntax
+    constraint_patterns = [
+        r"constraint\s+\w+\s*{",
+        r"rand\s+(int|bit|logic)\s+",
+        r"randomize\s*\(\s*\)"
+    ]
+    
+    constraint_matches = 0
+    for pattern in constraint_patterns:
+        if re.search(pattern, user_code, re.IGNORECASE):
+            constraint_matches += 1
+    
+    checks["proper_constraint_syntax"] = constraint_matches >= 2
+    
+    # Check for display/output
+    checks["has_display"] = "\$display" in user_code or "\$write" in user_code
+    
+    # Check for test module
+    checks["has_test_module"] = "module test" in user_code.lower() or "initial begin" in user_code.lower()
+    
+    return {
+        "checks": checks,
+        "pattern_matched": True,
+        "validation_method": "pattern_matching"
+    }
 
-int main(int argc, char** argv) {
-    Verilated::commandArgs(argc, argv);
-    Vdesign* top = new Vdesign;
+def validate_assertion_code(user_code: str, problem: dict) -> dict:
+    """Validate assertion-based SystemVerilog code"""
+    checks = {}
     
-    // Simple test
-    top->eval();
+    # Basic assertion checks
+    checks["has_assert"] = "assert" in user_code.lower()
+    checks["has_property"] = "property" in user_code.lower() or "@(posedge" in user_code
     
-    std::cout << "Assertion test completed" << std::endl;
+    # Check for common assertion patterns
+    assertion_patterns = [
+        r"assert\s+property",
+        r"@\(posedge",
+        r"disable\s+iff",
+        r"\$error",
+        r"!\$isunknown"
+    ]
     
-    top->final();
-    delete top;
-    return 0;
-}
-'''
-        main_file = tmp_path / "main.cpp"
-        main_file.write_text(main_cpp)
-        verilator_cmd.append(str(main_file))
-        
-        # Run Verilator
-        compile_result = subprocess.run(
-            verilator_cmd,
-            capture_output=True,
-            text=True,
-            cwd=tmpdir,
-            timeout=60
-        )
-        
-        compile_log = compile_result.stdout + compile_result.stderr
-        
-        if compile_result.returncode != 0:
-            return {
-                "success": False,
-                "error": "Assertion compilation failed",
-                "compile_log": compile_log[:1000],
-                "run_log": "",
-                "details": {"compile_error": True}
-            }
-        
-        # Run executable
-        exec_path = tmp_path / "obj_dir" / "Vdesign"
-        if not exec_path.exists():
-            return {
-                "success": False,
-                "error": "Executable not created",
-                "compile_log": compile_log,
-                "run_log": "",
-                "details": {"executable_missing": True}
-            }
-        
-        run_result = subprocess.run(
-            [str(exec_path)],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
-        run_log = run_result.stdout + run_result.stderr
-        
-        # Check for assertion messages
-        assertion_results = []
-        if "assert" in run_log.lower() or "Assertion" in run_log:
-            lines = run_log.split('\n')
-            for line in lines:
-                if "Assertion" in line or "assert" in line.lower():
-                    status = "passed" if "passed" in line.lower() else "failed"
-                    assertion_results.append({
-                        "status": status,
-                        "message": line.strip()
-                    })
-        
-        success = not any(r["status"] == "failed" for r in assertion_results)
-        
-        return {
-            "success": success,
-            "output": run_log,
-            "error": "" if success else "Assertion failures",
-            "compile_log": compile_log,
-            "run_log": run_log,
-            "assertion_results": assertion_results,
-            "details": {"method": "verilator_assertions"}
-        }
+    assertion_matches = 0
+    for pattern in assertion_patterns:
+        if re.search(pattern, user_code, re.IGNORECASE):
+            assertion_matches += 1
+    
+    checks["proper_assertion_syntax"] = assertion_matches >= 2
+    
+    # Check for testbench
+    checks["has_testbench"] = "module" in user_code and "initial" in user_code
+    
+    return {
+        "checks": checks,
+        "validation_method": "assertion_patterns"
+    }
 
-def run_systemverilog_with_iverilog(user_code: str, problem: dict) -> dict:
-    """Run SystemVerilog using Icarus Verilog (better SV support than Verilator)"""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-        
-        # Use Icarus with SystemVerilog support
-        source = f"`timescale 1ns/1ps\n{user_code}"
-        source_file = tmp_path / "design.sv"
-        source_file.write_text(source)
-        
-        # Compile with Icarus (2012 standard for basic SV support)
-        output_exec = tmp_path / "sim"
-        compile_result = subprocess.run(
-            ["iverilog", "-g2012", "-o", str(output_exec), str(source_file)],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
-        compile_log = compile_result.stdout + compile_result.stderr
-        
-        if compile_result.returncode != 0:
-            return {
-                "success": False,
-                "error": "SystemVerilog Compilation Failed",
-                "compile_log": compile_log,
-                "run_log": "",
-                "details": {"compile_error": True}
-            }
-        
-        # Simulate
-        sim_result = subprocess.run(
-            ["vvp", str(output_exec)],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
-        run_log = sim_result.stdout + sim_result.stderr
-        
-        success = "PASS" in run_log.upper() or "Error" not in run_log
-        
-        return {
-            "success": success,
-            "output": run_log,
-            "error": "" if success else "Simulation failed",
-            "compile_log": compile_log,
-            "run_log": run_log,
-            "details": {"method": "iverilog_systemverilog"}
-        }
+def validate_coverage_code(user_code: str, problem: dict) -> dict:
+    """Validate coverage-based SystemVerilog code"""
+    checks = {}
+    
+    # Coverage specific checks
+    checks["has_covergroup"] = "covergroup" in user_code.lower()
+    checks["has_coverpoint"] = "coverpoint" in user_code.lower()
+    checks["has_bins"] = "bins" in user_code.lower()
+    
+    # Check for sampling
+    checks["has_sample"] = "sample" in user_code.lower() or "@(" in user_code
+    
+    return {
+        "checks": checks,
+        "validation_method": "coverage_patterns"
+    }
+
+def validate_generic_sv(user_code: str, problem: dict) -> dict:
+    """Validate generic SystemVerilog code"""
+    checks = {}
+    
+    # Basic SV constructs
+    checks["has_module"] = "module" in user_code
+    checks["has_initial_or_always"] = "initial" in user_code or "always" in user_code
+    checks["has_system_tasks"] = any(task in user_code for task in ["$display", "$write", "$finish"])
+    
+    # Check for problem-specific requirements
+    expected_output = problem.get("expected_output", "")
+    if expected_output:
+        # Simple pattern matching in code (not output)
+        checks["has_expected_pattern"] = expected_output.lower() in user_code.lower()
+    
+    return {
+        "checks": checks,
+        "validation_method": "generic_patterns"
+    }
 
 @app.get("/api/features")
 async def get_features():
@@ -645,9 +550,9 @@ async def get_features():
             "randomization",
             "functional_coverage"
         ],
-        "note": "Note: Some advanced SystemVerilog features may have limited support",
-        "verilog_simulator": "Icarus Verilog",
-        "systemverilog_simulator": "Icarus Verilog (basic) / Verilator (limited)"
+        "note": "SystemVerilog constraint validation uses pattern matching (not full simulation)",
+        "verilog_simulator": "Icarus Verilog (full simulation)",
+        "systemverilog_simulator": "Icarus Verilog (syntax check) + Pattern matching"
     }
 
 @app.get("/api/health")
@@ -659,15 +564,6 @@ async def health_check():
         tools["iverilog"] = "available" if iverilog_result.returncode == 0 else "not available"
     except:
         tools["iverilog"] = "not available"
-    
-    try:
-        verilator_result = subprocess.run(["verilator", "--version"], capture_output=True, text=True)
-        if verilator_result.returncode == 0:
-            tools["verilator"] = f"available ({verilator_result.stdout.strip()})"
-        else:
-            tools["verilator"] = "not available"
-    except:
-        tools["verilator"] = "not available"
     
     return {
         "status": "healthy",

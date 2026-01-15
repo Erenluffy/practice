@@ -8,12 +8,44 @@
     "template": "module top_module(input a, b, output out);\n  // Your code here\n  // assign out = a & b;\nendmodule",
     "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire out;\n    integer passed = 0;\n    top_module dut (.a(a), .b(b), .out(out));\n    initial begin\n        $display(\"Testing AND Gate...\");\n        a=0; b=0; #10; if(out !== 0) $display(\"FAIL 00\"); else passed++;\n        a=0; b=1; #10; if(out !== 0) $display(\"FAIL 01\"); else passed++;\n        a=1; b=0; #10; if(out !== 0) $display(\"FAIL 10\"); else passed++;\n        a=1; b=1; #10; if(out !== 1) $display(\"FAIL 11\"); else passed++;\n        if(passed==4) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
     "hint": "Use bitwise AND operator &",
-    "examples": [{"input":"a=0,b=0","output":"out=0"},{"input":"a=1,b=1","output":"out=1"}],
-    "test_cases": [
-      {"input":{"a":0,"b":0},"expected":{"out":0},"description":"Both low"},
-      {"input":{"a":1,"b":1},"expected":{"out":1},"description":"Both high"}
+    "examples": [
+      {
+        "input": "a=0,b=0",
+        "output": "out=0",
+        "explanation": "Both low, output low"
+      },
+      {
+        "input": "a=1,b=1",
+        "output": "out=1",
+        "explanation": "Both high, output high"
+      }
     ],
-    "constraints": ["Combinational logic only", "Use continuous assignment"]
+    "test_cases": [
+      {
+        "input": {
+          "a": 0,
+          "b": 0
+        },
+        "expected": {
+          "out": 0
+        },
+        "description": "Both inputs low"
+      },
+      {
+        "input": {
+          "a": 1,
+          "b": 1
+        },
+        "expected": {
+          "out": 1
+        },
+        "description": "Both inputs high"
+      }
+    ],
+    "constraints": [
+      "Combinational logic only",
+      "Use continuous assignment"
+    ]
   },
   {
     "id": "or_gate",
@@ -24,12 +56,38 @@
     "template": "module top_module(input a, b, output out);\n  // assign out = a | b;\nendmodule",
     "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire out;\n    integer passed = 0;\n    top_module dut (.a(a), .b(b), .out(out));\n    initial begin\n        $display(\"Testing OR Gate...\");\n        a=0; b=0; #10; if(out !== 0) $display(\"FAIL 00\"); else passed++;\n        a=0; b=1; #10; if(out !== 1) $display(\"FAIL 01\"); else passed++;\n        a=1; b=0; #10; if(out !== 1) $display(\"FAIL 10\"); else passed++;\n        a=1; b=1; #10; if(out !== 1) $display(\"FAIL 11\"); else passed++;\n        if(passed==4) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
     "hint": "Use bitwise OR operator |",
-    "examples": [{"input":"a=0,b=1","output":"out=1"}],
-    "test_cases": [
-      {"input":{"a":0,"b":0},"expected":{"out":0}},
-      {"input":{"a":0,"b":1},"expected":{"out":1}}
+    "examples": [
+      {
+        "input": "a=0,b=1",
+        "output": "out=1",
+        "explanation": "One input high, output high"
+      }
     ],
-    "constraints": ["Combinational logic only"]
+    "test_cases": [
+      {
+        "input": {
+          "a": 0,
+          "b": 0
+        },
+        "expected": {
+          "out": 0
+        },
+        "description": "Both inputs low"
+      },
+      {
+        "input": {
+          "a": 0,
+          "b": 1
+        },
+        "expected": {
+          "out": 1
+        },
+        "description": "At least one input high"
+      }
+    ],
+    "constraints": [
+      "Combinational logic only"
+    ]
   },
   {
     "id": "nand_gate",
@@ -40,12 +98,38 @@
     "template": "module top_module(input a, b, output out);\n  // assign out = ~(a & b);\nendmodule",
     "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire out;\n    integer passed = 0;\n    top_module dut (.a(a), .b(b), .out(out));\n    initial begin\n        $display(\"Testing NAND Gate...\");\n        a=0; b=0; #10; if(out !== 1) $display(\"FAIL 00\"); else passed++;\n        a=0; b=1; #10; if(out !== 1) $display(\"FAIL 01\"); else passed++;\n        a=1; b=0; #10; if(out !== 1) $display(\"FAIL 10\"); else passed++;\n        a=1; b=1; #10; if(out !== 0) $display(\"FAIL 11\"); else passed++;\n        if(passed==4) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
     "hint": "NAND = NOT AND",
-    "examples": [{"input":"a=1,b=1","output":"out=0"}],
-    "test_cases": [
-      {"input":{"a":1,"b":1},"expected":{"out":0}},
-      {"input":{"a":0,"b":0},"expected":{"out":1}}
+    "examples": [
+      {
+        "input": "a=1,b=1",
+        "output": "out=0",
+        "explanation": "NAND of ones is zero"
+      }
     ],
-    "constraints": ["Combinational logic only"]
+    "test_cases": [
+      {
+        "input": {
+          "a": 1,
+          "b": 1
+        },
+        "expected": {
+          "out": 0
+        },
+        "description": "NAND of ones is zero"
+      },
+      {
+        "input": {
+          "a": 0,
+          "b": 0
+        },
+        "expected": {
+          "out": 1
+        },
+        "description": "NAND of zeros is one"
+      }
+    ],
+    "constraints": [
+      "Combinational logic only"
+    ]
   },
   {
     "id": "nor_gate",
@@ -54,14 +138,40 @@
     "difficulty": "easy",
     "category": "basic_gates",
     "template": "module top_module(input a, b, output out);\n  // assign out = ~(a | b);\nendmodule",
-    "testbench": "similar to NAND with different truth table",
+    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire out;\n    integer passed = 0;\n    top_module dut (.a(a), .b(b), .out(out));\n    initial begin\n        $display(\"Testing NOR Gate...\");\n        a=0; b=0; #10; if(out !== 1) $display(\"FAIL 00\"); else passed++;\n        a=0; b=1; #10; if(out !== 0) $display(\"FAIL 01\"); else passed++;\n        a=1; b=0; #10; if(out !== 0) $display(\"FAIL 10\"); else passed++;\n        a=1; b=1; #10; if(out !== 0) $display(\"FAIL 11\"); else passed++;\n        if(passed==4) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
     "hint": "NOR = NOT OR",
-    "examples": [{"input":"a=0,b=0","output":"out=1"}],
-    "test_cases": [
-      {"input":{"a":0,"b":0},"expected":{"out":1}},
-      {"input":{"a":1,"b":0},"expected":{"out":0}}
+    "examples": [
+      {
+        "input": "a=0,b=0",
+        "output": "out=1",
+        "explanation": "Both low, output high"
+      }
     ],
-    "constraints": ["Combinational logic only"]
+    "test_cases": [
+      {
+        "input": {
+          "a": 0,
+          "b": 0
+        },
+        "expected": {
+          "out": 1
+        },
+        "description": "Both low, output high"
+      },
+      {
+        "input": {
+          "a": 1,
+          "b": 0
+        },
+        "expected": {
+          "out": 0
+        },
+        "description": "One high, output low"
+      }
+    ],
+    "constraints": [
+      "Combinational logic only"
+    ]
   },
   {
     "id": "xor_gate",
@@ -70,14 +180,40 @@
     "difficulty": "easy",
     "category": "basic_gates",
     "template": "module top_module(input a, b, output out);\n  // assign out = a ^ b;\nendmodule",
-    "testbench": "similar to previous gates",
+    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire out;\n    integer passed = 0;\n    top_module dut (.a(a), .b(b), .out(out));\n    initial begin\n        $display(\"Testing XOR Gate...\");\n        a=0; b=0; #10; if(out !== 0) $display(\"FAIL 00\"); else passed++;\n        a=0; b=1; #10; if(out !== 1) $display(\"FAIL 01\"); else passed++;\n        a=1; b=0; #10; if(out !== 1) $display(\"FAIL 10\"); else passed++;\n        a=1; b=1; #10; if(out !== 0) $display(\"FAIL 11\"); else passed++;\n        if(passed==4) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
     "hint": "Use ^ operator",
-    "examples": [{"input":"a=1,b=0","output":"out=1"}],
-    "test_cases": [
-      {"input":{"a":1,"b":0},"expected":{"out":1}},
-      {"input":{"a":1,"b":1},"expected":{"out":0}}
+    "examples": [
+      {
+        "input": "a=1,b=0",
+        "output": "out=1",
+        "explanation": "Different inputs, output high"
+      }
     ],
-    "constraints": ["Combinational logic only"]
+    "test_cases": [
+      {
+        "input": {
+          "a": 1,
+          "b": 0
+        },
+        "expected": {
+          "out": 1
+        },
+        "description": "Different inputs"
+      },
+      {
+        "input": {
+          "a": 1,
+          "b": 1
+        },
+        "expected": {
+          "out": 0
+        },
+        "description": "Same inputs"
+      }
+    ],
+    "constraints": [
+      "Combinational logic only"
+    ]
   },
   {
     "id": "xnor_gate",
@@ -86,14 +222,40 @@
     "difficulty": "easy",
     "category": "basic_gates",
     "template": "module top_module(input a, b, output out);\n  // assign out = ~(a ^ b);\nendmodule",
-    "testbench": "similar to XOR with inverted output",
+    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire out;\n    integer passed = 0;\n    top_module dut (.a(a), .b(b), .out(out));\n    initial begin\n        $display(\"Testing XNOR Gate...\");\n        a=0; b=0; #10; if(out !== 1) $display(\"FAIL 00\"); else passed++;\n        a=0; b=1; #10; if(out !== 0) $display(\"FAIL 01\"); else passed++;\n        a=1; b=0; #10; if(out !== 0) $display(\"FAIL 10\"); else passed++;\n        a=1; b=1; #10; if(out !== 1) $display(\"FAIL 11\"); else passed++;\n        if(passed==4) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
     "hint": "XNOR = NOT XOR",
-    "examples": [{"input":"a=1,b=1","output":"out=1"}],
-    "test_cases": [
-      {"input":{"a":1,"b":1},"expected":{"out":1}},
-      {"input":{"a":1,"b":0},"expected":{"out":0}}
+    "examples": [
+      {
+        "input": "a=1,b=1",
+        "output": "out=1",
+        "explanation": "Same inputs, output high"
+      }
     ],
-    "constraints": ["Combinational logic only"]
+    "test_cases": [
+      {
+        "input": {
+          "a": 1,
+          "b": 1
+        },
+        "expected": {
+          "out": 1
+        },
+        "description": "Same inputs"
+      },
+      {
+        "input": {
+          "a": 1,
+          "b": 0
+        },
+        "expected": {
+          "out": 0
+        },
+        "description": "Different inputs"
+      }
+    ],
+    "constraints": [
+      "Combinational logic only"
+    ]
   },
   {
     "id": "not_gate",
@@ -102,14 +264,38 @@
     "difficulty": "easy",
     "category": "basic_gates",
     "template": "module top_module(input in, output out);\n  // assign out = ~in;\nendmodule",
-    "testbench": "simple testbench with in=0,1",
+    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg in;\n    wire out;\n    integer passed = 0;\n    top_module dut (.in(in), .out(out));\n    initial begin\n        $display(\"Testing NOT Gate...\");\n        in=0; #10; if(out !== 1) $display(\"FAIL 0\"); else passed++;\n        in=1; #10; if(out !== 0) $display(\"FAIL 1\"); else passed++;\n        if(passed==2) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
     "hint": "Use ~ operator",
-    "examples": [{"input":"in=1","output":"out=0"}],
-    "test_cases": [
-      {"input":{"in":1},"expected":{"out":0}},
-      {"input":{"in":0},"expected":{"out":1}}
+    "examples": [
+      {
+        "input": "in=1",
+        "output": "out=0",
+        "explanation": "Invert input"
+      }
     ],
-    "constraints": ["Single input only"]
+    "test_cases": [
+      {
+        "input": {
+          "in": 1
+        },
+        "expected": {
+          "out": 0
+        },
+        "description": "Invert high to low"
+      },
+      {
+        "input": {
+          "in": 0
+        },
+        "expected": {
+          "out": 1
+        },
+        "description": "Invert low to high"
+      }
+    ],
+    "constraints": [
+      "Single input only"
+    ]
   },
   {
     "id": "vector_not4",
@@ -118,715 +304,38 @@
     "difficulty": "easy",
     "category": "basic_gates",
     "template": "module vector_not4(input [3:0] in, output [3:0] out);\n  // assign out = ~in;\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [3:0] in;\n    wire [3:0] out;\n    vector_not4 dut (.in(in), .out(out));\n    initial begin\n        in = 4'b0000; #10; if(out !== 4'b1111) $display(\"FAIL 1\");\n        in = 4'b1010; #10; if(out !== 4'b0101) $display(\"FAIL 2\");\n        in = 4'b1111; #10; if(out !== 4'b0000) $display(\"FAIL 3\");\n        $display(\"Testing complete\");\n        $finish;\n    end\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [3:0] in;\n    wire [3:0] out;\n    integer passed = 0;\n    vector_not4 dut (.in(in), .out(out));\n    initial begin\n        in = 4'b0000; #10; if(out !== 4'b1111) $display(\"FAIL 1\"); else passed++;\n        in = 4'b1010; #10; if(out !== 4'b0101) $display(\"FAIL 2\"); else passed++;\n        in = 4'b1111; #10; if(out !== 4'b0000) $display(\"FAIL 3\"); else passed++;\n        if(passed==3) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
     "hint": "Use bitwise NOT on vector",
-    "examples": [{"input":"in=4'b1010","output":"out=4'b0101"}],
-    "test_cases": [
-      {"input":{"in":"4'b0000"},"expected":{"out":"4'b1111"}},
-      {"input":{"in":"4'b1010"},"expected":{"out":"4'b0101"}}
+    "examples": [
+      {
+        "input": "in=4'b1010",
+        "output": "out=4'b0101",
+        "explanation": "Bitwise NOT operation on vector"
+      }
     ],
-    "constraints": ["4-bit input/output", "Bitwise operation"]
-  },
-  {
-    "id": "mux_2to1",
-    "title": "2-to-1 Multiplexer",
-    "description": "Implement a 2-to-1 multiplexer with select line. Output = a when s=0, b when s=1.",
-    "difficulty": "easy",
-    "category": "combinational",
-    "template": "module top_module(input a, b, s, output out);\n  // assign out = s ? b : a;\nendmodule",
-    "testbench": "test all combinations of a,b,s",
-    "hint": "Use ternary operator",
-    "examples": [{"input":"a=1,b=0,s=0","output":"out=1"}],
     "test_cases": [
-      {"input":{"a":1,"b":0,"s":0},"expected":{"out":1}},
-      {"input":{"a":1,"b":0,"s":1},"expected":{"out":0}}
+      {
+        "input": {
+          "in": "4'b0000"
+        },
+        "expected": {
+          "out": "4'b1111"
+        },
+        "description": "Invert all zeros to all ones"
+      },
+      {
+        "input": {
+          "in": "4'b1010"
+        },
+        "expected": {
+          "out": "4'b0101"
+        },
+        "description": "Invert alternating pattern"
+      }
     ],
-    "constraints": ["Combinational only"]
-  },
-  {
-    "id": "mux_4to1",
-    "title": "4-to-1 Multiplexer",
-    "description": "Implement a 4-to-1 multiplexer with 2-bit select. Output = in[sel].",
-    "difficulty": "medium",
-    "category": "combinational",
-    "template": "module mux4to1(input [3:0] in, input [1:0] sel, output out);\n  // assign out = in[sel];\n  // OR use case statement\nendmodule",
-    "testbench": "test all 4 select values",
-    "hint": "Array indexing or case statement",
-    "examples": [{"input":"in=4'b1010, sel=2'b01","output":"out=1"}],
-    "test_cases": [
-      {"input":{"in":"4'b1010","sel":1},"expected":{"out":1}},
-      {"input":{"in":"4'b1010","sel":2},"expected":{"out":0}}
-    ],
-    "constraints": ["4 inputs, 2-bit select"]
-  },
-  {
-    "id": "demux_1to4",
-    "title": "1-to-4 Demultiplexer",
-    "description": "Implement a 1-to-4 demultiplexer. Route input to one of 4 outputs based on select.",
-    "difficulty": "medium",
-    "category": "combinational",
-    "template": "module demux1to4(input in, input [1:0] sel, output reg [3:0] out);\n  // Use case statement\n  // out = 4'b0; out[sel] = in;\nendmodule",
-    "testbench": "test all select values",
-    "hint": "Set only selected output to input",
-    "examples": [{"input":"in=1, sel=2'b10","output":"out=4'b0100"}],
-    "test_cases": [
-      {"input":{"in":1,"sel":2},"expected":{"out":"4'b0100"}},
-      {"input":{"in":0,"sel":0},"expected":{"out":"4'b0000"}}
-    ],
-    "constraints": ["4 outputs, enable all unselected to 0"]
-  },
-  {
-    "id": "encoder_8to3",
-    "title": "8-to-3 Priority Encoder",
-    "description": "Implement an 8-to-3 priority encoder. Output binary code of highest priority active input.",
-    "difficulty": "medium",
-    "category": "combinational",
-    "template": "module encoder8to3(input [7:0] in, output reg [2:0] out);\n  // Use if-else or casez\nendmodule",
-    "testbench": "test multiple priority scenarios",
-    "hint": "Highest bit takes priority",
-    "examples": [{"input":"in=8'b00100000","output":"out=3'b101"}],
-    "test_cases": [
-      {"input":{"in":"8'b00100000"},"expected":{"out":"3'b101"}},
-      {"input":{"in":"8'b00000001"},"expected":{"out":"3'b000"}}
-    ],
-    "constraints": ["Priority to MSB"]
-  },
-  {
-    "id": "decoder_3to8",
-    "title": "3-to-8 Decoder",
-    "description": "Implement a 3-to-8 decoder. Exactly one output is high based on 3-bit input.",
-    "difficulty": "medium",
-    "category": "combinational",
-    "template": "module decoder3to8(input [2:0] in, output reg [7:0] out);\n  // out = 8'b0; out[in] = 1'b1;\nendmodule",
-    "testbench": "test all 8 input combinations",
-    "hint": "Array indexing or case statement",
-    "examples": [{"input":"in=3'b101","output":"out=8'b00100000"}],
-    "test_cases": [
-      {"input":{"in":5},"expected":{"out":"8'b00100000"}},
-      {"input":{"in":0},"expected":{"out":"8'b00000001"}}
-    ],
-    "constraints": ["Exactly one output high"]
-  },
-  {
-    "id": "comparator_4bit",
-    "title": "4-bit Comparator",
-    "description": "Implement a 4-bit magnitude comparator. Output gt, eq, lt signals.",
-    "difficulty": "medium",
-    "category": "combinational",
-    "template": "module comparator4bit(input [3:0] a, b, output gt, eq, lt);\n  // assign gt = a > b;\n  // assign eq = a == b;\n  // assign lt = a < b;\nendmodule",
-    "testbench": "test various comparison cases",
-    "hint": "Use relational operators",
-    "examples": [{"input":"a=4'b1010, b=4'b0101","output":"gt=1,eq=0,lt=0"}],
-    "test_cases": [
-      {"input":{"a":10,"b":5},"expected":{"gt":1,"eq":0,"lt":0}},
-      {"input":{"a":5,"b":5},"expected":{"gt":0,"eq":1,"lt":0}}
-    ],
-    "constraints": ["3 outputs: >, =, <"]
-  },
-  {
-    "id": "half_adder",
-    "title": "Half Adder",
-    "description": "Implement a half adder: sum = a XOR b, carry = a AND b.",
-    "difficulty": "easy",
-    "category": "arithmetic",
-    "template": "module half_adder(input a, b, output sum, carry);\n  // assign sum = a ^ b;\n  // assign carry = a & b;\nendmodule",
-    "testbench": "test all 4 input combinations",
-    "hint": "XOR for sum, AND for carry",
-    "examples": [{"input":"a=1,b=1","output":"sum=0,carry=1"}],
-    "test_cases": [
-      {"input":{"a":1,"b":1},"expected":{"sum":0,"carry":1}},
-      {"input":{"a":0,"b":1},"expected":{"sum":1,"carry":0}}
-    ],
-    "constraints": ["No clock needed"]
-  },
-  {
-    "id": "full_adder",
-    "title": "Full Adder",
-    "description": "Implement a full adder with carry-in. sum = a XOR b XOR cin, cout = (a&b)|(b&cin)|(a&cin).",
-    "difficulty": "medium",
-    "category": "arithmetic",
-    "template": "module full_adder(input a, b, cin, output sum, cout);\n  // assign sum = a ^ b ^ cin;\n  // assign cout = (a&b) | (b&cin) | (a&cin);\nendmodule",
-    "testbench": "test all 8 input combinations",
-    "hint": "Three-way XOR for sum",
-    "examples": [{"input":"a=1,b=1,cin=1","output":"sum=1,cout=1"}],
-    "test_cases": [
-      {"input":{"a":1,"b":1,"cin":1},"expected":{"sum":1,"cout":1}},
-      {"input":{"a":1,"b":0,"cin":1},"expected":{"sum":0,"cout":1}}
-    ],
-    "constraints": ["Include carry input"]
-  },
-  {
-    "id": "ripple_adder_4bit",
-    "title": "4-bit Ripple Carry Adder",
-    "description": "Implement a 4-bit ripple carry adder using full adders.",
-    "difficulty": "hard",
-    "category": "arithmetic",
-    "template": "module ripple_adder_4bit(input [3:0] a, b, input cin, output [3:0] sum, output cout);\n  wire [2:0] c;\n  // Instantiate 4 full adders\nendmodule",
-    "testbench": "test multiple addition cases",
-    "hint": "Chain carry outputs",
-    "examples": [{"input":"a=4'b0011,b=4'b0101,cin=0","output":"sum=4'b1000,cout=0"}],
-    "test_cases": [
-      {"input":{"a":3,"b":5,"cin":0},"expected":{"sum":8,"cout":0}},
-      {"input":{"a":15,"b":1,"cin":0},"expected":{"sum":0,"cout":1}}
-    ],
-    "constraints": ["Use structural design"]
-  },
-  {
-    "id": "carry_lookahead_4bit",
-    "title": "4-bit Carry Look Ahead Adder",
-    "description": "Implement a 4-bit carry look ahead adder for faster addition.",
-    "difficulty": "hard",
-    "category": "arithmetic",
-    "template": "module cla_adder(input [3:0] a, b, input cin, output [3:0] sum, output cout);\n  // Generate and propagate signals\n  // assign G = a & b;\n  // assign P = a | b;\nendmodule",
-    "testbench": "test timing vs ripple adder",
-    "hint": "Pre-compute all carries",
-    "examples": [{"input":"a=4'b1111,b=4'b0001,cin=0","output":"sum=4'b0000,cout=1"}],
-    "test_cases": [
-      {"input":{"a":15,"b":1,"cin":0},"expected":{"sum":0,"cout":1}}
-    ],
-    "constraints": ["Use generate/propagate"]
-  },
-  {
-    "id": "half_subtractor",
-    "title": "Half Subtractor",
-    "description": "Implement a half subtractor: diff = a XOR b, borrow = ~a & b.",
-    "difficulty": "medium",
-    "category": "arithmetic",
-    "template": "module half_sub(input a, b, output diff, borrow);\n  // assign diff = a ^ b;\n  // assign borrow = ~a & b;\nendmodule",
-    "testbench": "test all input combinations",
-    "hint": "Similar to half adder but different borrow",
-    "examples": [{"input":"a=0,b=1","output":"diff=1,borrow=1"}],
-    "test_cases": [
-      {"input":{"a":0,"b":1},"expected":{"diff":1,"borrow":1}},
-      {"input":{"a":1,"b":0},"expected":{"diff":1,"borrow":0}}
-    ],
-    "constraints": ["No clock needed"]
-  },
-  {
-    "id": "full_subtractor",
-    "title": "Full Subtractor",
-    "description": "Implement a full subtractor with borrow-in.",
-    "difficulty": "medium",
-    "category": "arithmetic",
-    "template": "module full_sub(input a, b, bin, output diff, bout);\n  // assign diff = a ^ b ^ bin;\n  // assign bout = (~a&b) | (~a&bin) | (b&bin);\nendmodule",
-    "testbench": "test all 8 combinations",
-    "hint": "Similar to full adder but different borrow",
-    "examples": [{"input":"a=1,b=0,bin=1","output":"diff=0,bout=1"}],
-    "test_cases": [
-      {"input":{"a":1,"b":0,"bin":1},"expected":{"diff":0,"bout":1}}
-    ],
-    "constraints": ["Include borrow input"]
-  },
-  {
-    "id": "d_flipflop",
-    "title": "D Flip-Flop",
-    "description": "Implement positive-edge triggered D flip-flop.",
-    "difficulty": "medium",
-    "category": "sequential",
-    "template": "module d_ff(input clk, d, output reg q);\n  // always @(posedge clk) q <= d;\nendmodule",
-    "testbench": "test with clock edges",
-    "hint": "Use posedge clk",
-    "examples": [{"input":"clk↑, d=1","output":"q=1"}],
-    "test_cases": [
-      {"input":{"d":1},"expected":{"q":1},"description":"On clock edge"}
-    ],
-    "constraints": ["Positive edge triggered"]
-  },
-  {
-    "id": "d_flipflop_async_reset",
-    "title": "D Flip-Flop with Async Reset",
-    "description": "D flip-flop with asynchronous active-low reset.",
-    "difficulty": "medium",
-    "category": "sequential",
-    "template": "module d_ff_async_rst(input clk, rst_n, d, output reg q);\n  // always @(posedge clk or negedge rst_n)\n  // if(!rst_n) q <= 0; else q <= d;\nendmodule",
-    "testbench": "test reset during operation",
-    "hint": "Reset independent of clock",
-    "examples": [{"input":"rst_n=0","output":"q=0 regardless of clock"}],
-    "test_cases": [
-      {"input":{"rst_n":0,"d":1},"expected":{"q":0}},
-      {"input":{"rst_n":1,"d":1},"expected":{"q":1}}
-    ],
-    "constraints": ["Async active-low reset"]
-  },
-  {
-    "id": "jk_flipflop",
-    "title": "JK Flip-Flop",
-    "description": "Implement JK flip-flop with truth table: 00=hold, 01=reset, 10=set, 11=toggle.",
-    "difficulty": "hard",
-    "category": "sequential",
-    "template": "module jk_ff(input clk, j, k, output reg q);\n  // always @(posedge clk)\n  // case({j,k}) 2'b00: q<=q; 2'b01: q<=0; 2'b10: q<=1; 2'b11: q<=~q; endcase\nendmodule",
-    "testbench": "test all JK combinations",
-    "hint": "Use case statement for JK truth table",
-    "examples": [{"input":"j=1,k=1","output":"q toggles"}],
-    "test_cases": [
-      {"input":{"j":1,"k":1},"expected":{"q":"~previous_q"}},
-      {"input":{"j":1,"k":0},"expected":{"q":1}}
-    ],
-    "constraints": ["4 modes: hold,reset,set,toggle"]
-  },
-  {
-    "id": "t_flipflop",
-    "title": "T Flip-Flop",
-    "description": "Implement T flip-flop: toggles when T=1, holds when T=0.",
-    "difficulty": "medium",
-    "category": "sequential",
-    "template": "module t_ff(input clk, t, output reg q);\n  // always @(posedge clk) if(t) q <= ~q; else q <= q;\nendmodule",
-    "testbench": "test toggle functionality",
-    "hint": "Toggle when t=1",
-    "examples": [{"input":"t=1","output":"q toggles"}],
-    "test_cases": [
-      {"input":{"t":1},"expected":{"q":"~previous_q"}},
-      {"input":{"t":0},"expected":{"q":"previous_q"}}
-    ],
-    "constraints": ["Toggle on T=1"]
-  },
-  {
-    "id": "sr_latch_nand",
-    "title": "SR Latch (NAND based)",
-    "description": "Implement SR latch using NAND gates. S=1,R=0 sets Q=1; S=0,R=1 resets Q=0.",
-    "difficulty": "medium",
-    "category": "sequential",
-    "template": "module sr_latch(input s, r, output q, q_bar);\n  // assign q = ~(r & q_bar);\n  // assign q_bar = ~(s & q);\nendmodule",
-    "testbench": "test all SR combinations",
-    "hint": "Cross-coupled NAND gates",
-    "examples": [{"input":"s=1,r=0","output":"q=1,q_bar=0"}],
-    "test_cases": [
-      {"input":{"s":1,"r":0},"expected":{"q":1,"q_bar":0}},
-      {"input":{"s":0,"r":1},"expected":{"q":0,"q_bar":1}}
-    ],
-    "constraints": ["No clock", "Avoid S=R=1"]
-  },
-  {
-    "id": "register_4bit",
-    "title": "4-bit Register",
-    "description": "Implement a 4-bit register using D flip-flops.",
-    "difficulty": "medium",
-    "category": "sequential",
-    "template": "module reg_4bit(input clk, input [3:0] d, output reg [3:0] q);\n  // always @(posedge clk) q <= d;\nendmodule",
-    "testbench": "test parallel load",
-    "hint": "4 D flip-flops in parallel",
-    "examples": [{"input":"d=4'b1010","output":"q=4'b1010 on clock"}],
-    "test_cases": [
-      {"input":{"d":"4'b1010"},"expected":{"q":"4'b1010"}},
-      {"input":{"d":"4'b1111"},"expected":{"q":"4'b1111"}}
-    ],
-    "constraints": ["Parallel load", "4-bit width"]
-  },
-  {
-    "id": "shift_register_siso",
-    "title": "SISO Shift Register",
-    "description": "Serial In Serial Out shift register. Data shifts right on each clock.",
-    "difficulty": "medium",
-    "category": "shifters",
-    "template": "module siso(input clk, si, output so);\n  reg [3:0] q;\n  // always @(posedge clk) q <= {q[2:0], si};\n  // assign so = q[3];\nendmodule",
-    "testbench": "test serial shifting",
-    "hint": "Concatenation for shifting",
-    "examples": [{"input":"si=1, after 4 clocks","output":"so=1"}],
-    "test_cases": [
-      {"input":{"si":1},"expected":{"so":1},"description":"After 4 clocks"}
-    ],
-    "constraints": ["4-bit internal register"]
-  },
-  {
-    "id": "shift_register_sipo",
-    "title": "SIPO Shift Register",
-    "description": "Serial In Parallel Out shift register.",
-    "difficulty": "medium",
-    "category": "shifters",
-    "template": "module sipo(input clk, si, output reg [3:0] po);\n  // always @(posedge clk) po <= {po[2:0], si};\nendmodule",
-    "testbench": "test serial to parallel conversion",
-    "hint": "Shift into parallel register",
-    "examples": [{"input":"si=1, clock 4 times","output":"po=4'b1111"}],
-    "test_cases": [
-      {"input":{"si":1},"expected":{"po":"4'b1111"},"description":"After 4 clocks"}
-    ],
-    "constraints": ["4-bit parallel output"]
-  },
-  {
-    "id": "shift_register_piso",
-    "title": "PISO Shift Register",
-    "description": "Parallel In Serial Out shift register with load control.",
-    "difficulty": "hard",
-    "category": "shifters",
-    "template": "module piso(input clk, ld, input [3:0] pi, output so);\n  reg [3:0] q;\n  // always @(posedge clk) if(ld) q<=pi; else q<={q[2:0],1'b0};\n  // assign so = q[3];\nendmodule",
-    "testbench": "test load and shift",
-    "hint": "Load parallel, then shift out",
-    "examples": [{"input":"ld=1,pi=4'b1010, then shift","output":"so outputs 0,1,0,1"}],
-    "test_cases": [
-      {"input":{"ld":1,"pi":"4'b1010"},"expected":{"so":1},"description":"After 3 shifts"}
-    ],
-    "constraints": ["Load control", "MSB first out"]
-  },
-  {
-    "id": "shift_register_pipo",
-    "title": "PIPO Shift Register",
-    "description": "Parallel In Parallel Out shift register (basically a register).",
-    "difficulty": "easy",
-    "category": "shifters",
-    "template": "module pipo(input clk, input [3:0] d, output reg [3:0] q);\n  // always @(posedge clk) q <= d;\nendmodule",
-    "testbench": "test parallel load",
-    "hint": "Same as 4-bit register",
-    "examples": [{"input":"d=4'b1100","output":"q=4'b1100"}],
-    "test_cases": [
-      {"input":{"d":"4'b1100"},"expected":{"q":"4'b1100"}}
-    ],
-    "constraints": ["Parallel load and output"]
-  },
-  {
-    "id": "johnson_counter",
-    "title": "Johnson Counter",
-    "description": "Implement a 4-bit Johnson (twisted ring) counter.",
-    "difficulty": "hard",
-    "category": "shifters",
-    "template": "module johnson_counter(input clk, rst, output reg [3:0] q);\n  // always @(posedge clk) if(rst) q<=0; else q<={~q[0],q[3:1]};\nendmodule",
-    "testbench": "test 8 unique states",
-    "hint": "Complement feedback",
-    "examples": [{"input":"after reset","output":"q cycles through 8 states"}],
-    "test_cases": [
-      {"input":{},"expected":{"q":"changing"},"description":"Cyclic pattern"}
-    ],
-    "constraints": ["8-state sequence", "Reset to 0000"]
-  },
-  {
-    "id": "ring_counter",
-    "title": "Ring Counter",
-    "description": "Implement a 4-bit ring counter (circulating shift register).",
-    "difficulty": "medium",
-    "category": "shifters",
-    "template": "module ring_counter(input clk, rst, output reg [3:0] q);\n  // always @(posedge clk) if(rst) q<=4'b0001; else q<={q[0],q[3:1]};\nendmodule",
-    "testbench": "test circular shift",
-    "hint": "Circular shift with 1 hot",
-    "examples": [{"input":"after reset","output":"q=4'b0001, then 4'b0010, etc."}],
-    "test_cases": [
-      {"input":{},"expected":{"q":"4'b0001"},"description":"After reset"}
-    ],
-    "constraints": ["One-hot encoding", "Circular shift"]
-  },
-  {
-    "id": "binary_counter_4bit",
-    "title": "4-bit Binary Counter",
-    "description": "Implement a 4-bit binary up counter.",
-    "difficulty": "medium",
-    "category": "shifters",
-    "template": "module counter_4bit(input clk, rst, output reg [3:0] count);\n  // always @(posedge clk) if(rst) count<=0; else count<=count+1;\nendmodule",
-    "testbench": "test count sequence 0-15",
-    "hint": "Use addition operator",
-    "examples": [{"input":"clock pulses","output":"0,1,2,...,15,0"}],
-    "test_cases": [
-      {"input":{},"expected":{"count":"incrementing"},"description":"Counts up"}
-    ],
-    "constraints": ["Reset to 0", "Wrap at 15"]
-  },
-  {
-    "id": "updown_counter_4bit",
-    "title": "4-bit Up/Down Counter",
-    "description": "Implement a 4-bit counter with up/down control.",
-    "difficulty": "hard",
-    "category": "shifters",
-    "template": "module updown_counter(input clk, rst, up, output reg [3:0] count);\n  // always @(posedge clk) if(rst) count<=0; else if(up) count<=count+1; else count<=count-1;\nendmodule",
-    "testbench": "test both up and down modes",
-    "hint": "Conditional increment/decrement",
-    "examples": [{"input":"up=1","output":"count up"},{"input":"up=0","output":"count down"}],
-    "test_cases": [
-      {"input":{"up":1},"expected":{"count":"incrementing"}},
-      {"input":{"up":0},"expected":{"count":"decrementing"}}
-    ],
-    "constraints": ["Up/down control", "Saturate or wrap"]
-  },
-  {
-    "id": "mealy_fsm_sequence",
-    "title": "Mealy FSM Sequence Detector",
-    "description": "Implement Mealy FSM to detect sequence 101.",
-    "difficulty": "hard",
-    "category": "fsm",
-    "template": "module mealy_101(input clk, rst, in, output reg out);\n  // Define states, next_state logic\n  // Output depends on state AND input\nendmodule",
-    "testbench": "test overlapping sequences",
-    "hint": "Output on transition",
-    "examples": [{"input":"in=1,0,1","output":"out=1 on last bit"}],
-    "test_cases": [
-      {"input":{"in":1},"sequence":[1,0,1],"expected":{"out":1},"description":"Detect 101"}
-    ],
-    "constraints": ["Overlap allowed", "Mealy outputs"]
-  },
-  {
-    "id": "moore_fsm_sequence",
-    "title": "Moore FSM Sequence Detector",
-    "description": "Implement Moore FSM to detect sequence 1101.",
-    "difficulty": "hard",
-    "category": "fsm",
-    "template": "module moore_1101(input clk, rst, in, output reg out);\n  // Define states\n  // Output depends only on state\nendmodule",
-    "testbench": "test non-overlapping detection",
-    "hint": "Output in state",
-    "examples": [{"input":"in=1,1,0,1","output":"out=1 in last state"}],
-    "test_cases": [
-      {"input":{"in":1},"sequence":[1,1,0,1],"expected":{"out":1}}
-    ],
-    "constraints": ["Non-overlap", "Moore outputs"]
-  },
-  {
-    "id": "traffic_light_fsm",
-    "title": "Traffic Light FSM",
-    "description": "Implement FSM for simple traffic light (R->G->Y->R).",
-    "difficulty": "hard",
-    "category": "fsm",
-    "template": "module traffic_light(input clk, rst, output reg [2:0] light);\n  // R=100, G=010, Y=001\n  // Timer for each state\nendmodule",
-    "testbench": "test sequence and timing",
-    "hint": "3 states with timer",
-    "examples": [{"input":"","output":"R->G->Y->R cycle"}],
-    "test_cases": [
-      {"input":{},"expected":{"light":"100->010->001->100"}}
-    ],
-    "constraints": ["3 lights", "Cyclic sequence"]
-  },
-  {
-    "id": "fifo_sync_4x8",
-    "title": "Synchronous FIFO (4x8)",
-    "description": "Implement 4-entry x 8-bit synchronous FIFO.",
-    "difficulty": "very hard",
-    "category": "memory",
-    "template": "module fifo_4x8(input clk, rst, wr_en, rd_en, input [7:0] data_in, output [7:0] data_out, output full, empty);\n  // Memory array, write/read pointers\nendmodule",
-    "testbench": "test FIFO operations",
-    "hint": "Use circular buffer with pointers",
-    "examples": [{"input":"write 4 values","output":"full=1"},{"input":"read 4 values","output":"empty=1"}],
-    "test_cases": [
-      {"input":{"wr_en":1,"data_in":8'hAA},"expected":{"full":0}},
-      {"input":{"wr_en":1,"data_in":8'hBB},"expected":{"full":0}}
-    ],
-    "constraints": ["4 entries", "8-bit data", "Sync read/write"]
-  },
-  {
-    "id": "ram_16x8",
-    "title": "16x8 RAM",
-    "description": "Implement 16-location x 8-bit RAM with read/write.",
-    "difficulty": "hard",
-    "category": "memory",
-    "template": "module ram_16x8(input clk, we, input [3:0] addr, input [7:0] data_in, output [7:0] data_out);\n  reg [7:0] mem [0:15];\n  // Write on clock edge, read async\nendmodule",
-    "testbench": "test write and read",
-    "hint": "Array of registers",
-    "examples": [{"input":"we=1, addr=4'b0010, data_in=8'h55","output":"mem[2]=8'h55"}],
-    "test_cases": [
-      {"input":{"we":1,"addr":2,"data_in":"8'h55"},"expected":{"data_out":"8'h55"}},
-      {"input":{"we":0,"addr":2},"expected":{"data_out":"8'h55"}}
-    ],
-    "constraints": ["16 addresses", "8-bit data", "Sync write, async read"]
-  },
-  {
-    "id": "binary_to_gray",
-    "title": "Binary to Gray Code Converter",
-    "description": "Convert 4-bit binary to Gray code.",
-    "difficulty": "easy",
-    "category": "converters",
-    "template": "module bin2gray(input [3:0] bin, output [3:0] gray);\n  // assign gray[3] = bin[3];\n  // assign gray[2] = bin[3] ^ bin[2];\n  // etc.\nendmodule",
-    "testbench": "test all 16 values",
-    "hint": "MSB same, others XOR with next higher bit",
-    "examples": [{"input":"bin=4'b0101","output":"gray=4'b0111"}],
-    "test_cases": [
-      {"input":{"bin":"4'b0101"},"expected":{"gray":"4'b0111"}},
-      {"input":{"bin":"4'b1000"},"expected":{"gray":"4'b1100"}}
-    ],
-    "constraints": ["4-bit input/output", "Combinational"]
-  },
-  {
-    "id": "gray_to_binary",
-    "title": "Gray to Binary Converter",
-    "description": "Convert 4-bit Gray code to binary.",
-    "difficulty": "medium",
-    "category": "converters",
-    "template": "module gray2bin(input [3:0] gray, output [3:0] bin);\n  // assign bin[3] = gray[3];\n  // assign bin[2] = gray[3] ^ gray[2];\n  // etc.\nendmodule",
-    "testbench": "test inverse of bin2gray",
-    "hint": "MSB same, others XOR cumulatively",
-    "examples": [{"input":"gray=4'b0111","output":"bin=4'b0101"}],
-    "test_cases": [
-      {"input":{"gray":"4'b0111"},"expected":{"bin":"4'b0101"}}
-    ],
-    "constraints": ["Inverse of previous problem"]
-  },
-  {
-    "id": "bcd_to_excess3",
-    "title": "BCD to Excess-3 Converter",
-    "description": "Convert 4-bit BCD to Excess-3 code.",
-    "difficulty": "medium",
-    "category": "converters",
-    "template": "module bcd2ex3(input [3:0] bcd, output [3:0] ex3);\n  // assign ex3 = bcd + 3;\nendmodule",
-    "testbench": "test 0-9 BCD values",
-    "hint": "Add 3 to BCD",
-    "examples": [{"input":"bcd=4'b0101 (5)","output":"ex3=4'b1000 (8)"}],
-    "test_cases": [
-      {"input":{"bcd":5},"expected":{"ex3":8}},
-      {"input":{"bcd":0},"expected":{"ex3":3}}
-    ],
-    "constraints": ["Valid BCD inputs only (0-9)"]
-  },
-  {
-    "id": "excess3_to_bcd",
-    "title": "Excess-3 to BCD Converter",
-    "description": "Convert Excess-3 code back to BCD.",
-    "difficulty": "medium",
-    "category": "converters",
-    "template": "module ex32bcd(input [3:0] ex3, output [3:0] bcd);\n  // assign bcd = ex3 - 3;\nendmodule",
-    "testbench": "test inverse conversion",
-    "hint": "Subtract 3",
-    "examples": [{"input":"ex3=4'b1000 (8)","output":"bcd=4'b0101 (5)"}],
-    "test_cases": [
-      {"input":{"ex3":8},"expected":{"bcd":5}},
-      {"input":{"ex3":3},"expected":{"bcd":0}}
-    ],
-    "constraints": ["Inverse of previous"]
-  },
-  {
-    "id": "priority_encoder_4to2",
-    "title": "4-to-2 Priority Encoder",
-    "description": "Priority encoder with 4 inputs, 2 outputs, and valid signal.",
-    "difficulty": "medium",
-    "category": "combinational",
-    "template": "module pri_enc_4to2(input [3:0] in, output reg [1:0] out, output valid);\n  // Highest priority to in[3]\n  // valid = |in;\nendmodule",
-    "testbench": "test priority and valid",
-    "hint": "Use casez for priority",
-    "examples": [{"input":"in=4'b0100","output":"out=2'b10, valid=1"}],
-    "test_cases": [
-      {"input":{"in":"4'b0100"},"expected":{"out":2,"valid":1}},
-      {"input":{"in":"4'b0000"},"expected":{"valid":0}}
-    ],
-    "constraints": ["Priority to MSB", "Valid output"]
-  },
-  {
-    "id": "parity_generator",
-    "title": "4-bit Parity Generator",
-    "description": "Generate even parity bit for 4-bit data.",
-    "difficulty": "easy",
-    "category": "combinational",
-    "template": "module parity_gen(input [3:0] data, output even_parity);\n  // assign even_parity = ^data;\nendmodule",
-    "testbench": "test parity calculation",
-    "hint": "XOR all bits",
-    "examples": [{"input":"data=4'b1010","output":"even_parity=0"}],
-    "test_cases": [
-      {"input":{"data":"4'b1010"},"expected":{"even_parity":0}},
-      {"input":{"data":"4'b1011"},"expected":{"even_parity":1}}
-    ],
-    "constraints": ["Even parity", "Combinational"]
-  },
-  {
-    "id": "parity_checker",
-    "title": "Parity Checker",
-    "description": "Check 5-bit word (4 data + 1 parity) for even parity error.",
-    "difficulty": "medium",
-    "category": "combinational",
-    "template": "module parity_check(input [4:0] word, output error);\n  // assign error = ^word;\nendmodule",
-    "testbench": "test error detection",
-    "hint": "XOR all 5 bits",
-    "examples": [{"input":"word=5'b10100","output":"error=1 (parity error)"}],
-    "test_cases": [
-      {"input":{"word":"5'b10100"},"expected":{"error":1}},
-      {"input":{"word":"5'b10101"},"expected":{"error":0}}
-    ],
-    "constraints": ["5-bit input", "Error=1 if parity wrong"]
-  },
-  {
-    "id": "seven_segment_decoder",
-    "title": "7-Segment Decoder",
-    "description": "Convert 4-bit BCD to 7-segment display outputs (a-g).",
-    "difficulty": "medium",
-    "category": "converters",
-    "template": "module seg7(input [3:0] bcd, output reg [6:0] seg);\n  // case(bcd) 0: seg=7'b1111110; 1: seg=7'b0110000; etc.\nendmodule",
-    "testbench": "test digits 0-9",
-    "hint": "Lookup table for each digit",
-    "examples": [{"input":"bcd=4'b0000","output":"seg=7'b1111110 (digit 0)"}],
-    "test_cases": [
-      {"input":{"bcd":0},"expected":{"seg":"7'b1111110"}},
-      {"input":{"bcd":1},"expected":{"seg":"7'b0110000"}}
-    ],
-    "constraints": ["7 outputs", "Common cathode"]
-  },
-  {
-    "id": "alu_simple",
-    "title": "Simple ALU",
-    "description": "4-bit ALU with operations: ADD, SUB, AND, OR.",
-    "difficulty": "hard",
-    "category": "arithmetic",
-    "template": "module alu_4bit(input [3:0] a, b, input [1:0] op, output reg [3:0] out);\n  // case(op) 0: out=a+b; 1: out=a-b; 2: out=a&b; 3: out=a|b; endcase\nendmodule",
-    "testbench": "test all operations",
-    "hint": "Case statement for opcode",
-    "examples": [{"input":"a=4'b1010,b=4'b0101,op=0","output":"out=4'b1111"}],
-    "test_cases": [
-      {"input":{"a":10,"b":5,"op":0},"expected":{"out":15}},
-      {"input":{"a":10,"b":5,"op":2},"expected":{"out":0}}
-    ],
-    "constraints": ["4 operations", "4-bit data"]
-  },
-  {
-    "id": "multiplier_4bit",
-    "title": "4-bit Array Multiplier",
-    "description": "Multiply two 4-bit numbers to produce 8-bit result.",
-    "difficulty": "very hard",
-    "category": "advanced",
-    "template": "module mult_4x4(input [3:0] a, b, output [7:0] p);\n  // Use adder array\nendmodule",
-    "testbench": "test multiplication",
-    "hint": "Partial products and adders",
-    "examples": [{"input":"a=4'b0011,b=4'b0010","output":"p=8'b00000110 (3*2=6)"}],
-    "test_cases": [
-      {"input":{"a":3,"b":2},"expected":{"p":6}},
-      {"input":{"a":15,"b":15},"expected":{"p":225}}
-    ],
-    "constraints": ["8-bit product", "Combinational"]
-  },
-  {
-    "id": "divider_4bit",
-    "title": "4-bit Restoring Divider",
-    "description": "Divide 8-bit dividend by 4-bit divisor (restoring algorithm).",
-    "difficulty": "very hard",
-    "category": "advanced",
-    "template": "module div_4bit(input [7:0] dividend, input [3:0] divisor, output reg [3:0] quotient, output reg [3:0] remainder);\n  // Sequential restoring algorithm\nendmodule",
-    "testbench": "test division cases",
-    "hint": "Shift and subtract algorithm",
-    "examples": [{"input":"dividend=8'b00001010, divisor=4'b0011","output":"quotient=3, remainder=1"}],
-    "test_cases": [
-      {"input":{"dividend":10,"divisor":3},"expected":{"quotient":3,"remainder":1}}
-    ],
-    "constraints": ["8-bit dividend", "4-bit divisor/quotient/remainder"]
-  },
-  {
-    "id": "lfsr_8bit",
-    "title": "8-bit LFSR",
-    "description": "8-bit Linear Feedback Shift Register for pseudo-random sequence.",
-    "difficulty": "hard",
-    "category": "shifters",
-    "template": "module lfsr_8bit(input clk, rst, output reg [7:0] out);\n  // Tap positions for maximal length\nendmodule",
-    "testbench": "test sequence length",
-    "hint": "Use XOR feedback from taps",
-    "examples": [{"input":"","output":"pseudo-random sequence"}],
-    "test_cases": [
-      {"input":{},"expected":{"out":"non-zero after reset"}}
-    ],
-    "constraints": ["Maximal length (255 states)", "Non-zero seed"]
-  },
-  {
-    "id": "clock_divider",
-    "title": "Clock Divider",
-    "description": "Divide input clock by 4 to produce slower output clock.",
-    "difficulty": "medium",
-    "category": "sequential",
-    "template": "module clk_div_4(input clk, rst, output reg out_clk);\n  reg [1:0] counter;\n  // Count 0-3, toggle out_clk at count=3\nendmodule",
-    "testbench": "test frequency division",
-    "hint": "2-bit counter",
-    "examples": [{"input":"","output":"out_clk frequency = clk/4"}],
-    "test_cases": [
-      {"input":{},"expected":{"out_clk":"1/4 frequency"}}
-    ],
-    "constraints": ["Divide by 4", "50% duty cycle"]
-  },
-  {
-    "id": "debounce_circuit",
-    "title": "Switch Debouncer",
-    "description": "Debounce mechanical switch input (4ms debounce time).",
-    "difficulty": "hard",
-    "category": "sequential",
-    "template": "module debouncer(input clk, rst, noisy_in, output reg clean_out);\n  // Counter for stable period\nendmodule",
-    "testbench": "test with simulated bounce",
-    "hint": "Wait for stable input",
-    "examples": [{"input":"noisy switch","output":"clean single transition"}],
-    "test_cases": [
-      {"input":{"noisy_in":"bouncing"},"expected":{"clean_out":"stable"}}
-    ],
-    "constraints": ["20ms debounce", "System clock 100Hz"]
+    "constraints": [
+      "4-bit input/output",
+      "Bitwise operation"
+    ]
   }
 ]

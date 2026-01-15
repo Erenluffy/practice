@@ -1,12 +1,109 @@
 [
   {
+    "id": "vector_not4",
+    "title": "4-bit Vector NOT",
+    "description": "Create a Verilog module that inverts all bits of a 4-bit vector. This is your introduction to working with multi-bit signals (buses)! Instead of a single wire, you'll work with a 4-bit wide signal. Each bit should be independently inverted - if input bit is 0, corresponding output bit is 1, and vice versa. This operation is fundamental in digital systems for bitwise negation, complement operations, and data manipulation. Understanding vector operations is crucial because real circuits process multiple bits simultaneously - processors work with 32-bit or 64-bit data!",
+    "difficulty": "easy",
+    "category": "Combinational Logic",
+    "template": "module vector_not4(input [3:0] in, output [3:0] out);\n  // Your code here\n  // Use bitwise NOT operator: ~\n  // Example: assign out = ~in;\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [3:0] in;\n    wire [3:0] out;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    vector_not4 dut (.in(in), .out(out));\n    \n    initial begin\n        $display(\"Testing 4-bit Vector NOT...\");\n        \n        // Test case 1: All zeros\n        in = 4'b0000; #10;\n        total_tests = total_tests + 1;\n        if (out !== 4'b1111) $display(\"FAIL: in=%b, out=%b (expected 1111)\", in, out); else passed_tests = passed_tests + 1;\n        \n        // Test case 2: 1010\n        in = 4'b1010; #10;\n        total_tests = total_tests + 1;\n        if (out !== 4'b0101) $display(\"FAIL: in=%b, out=%b (expected 0101)\", in, out); else passed_tests = passed_tests + 1;\n        \n        // Test case 3: All ones\n        in = 4'b1111; #10;\n        total_tests = total_tests + 1;\n        if (out !== 4'b0000) $display(\"FAIL: in=%b, out=%b (expected 0000)\", in, out); else passed_tests = passed_tests + 1;\n        \n        // Test case 4: 0110\n        in = 4'b0110; #10;\n        total_tests = total_tests + 1;\n        if (out !== 4'b1001) $display(\"FAIL: in=%b, out=%b (expected 1001)\", in, out); else passed_tests = passed_tests + 1;\n        \n        // Random test\n        in = 4'b1100; #10;\n        total_tests = total_tests + 1;\n        if (out !== 4'b0011) $display(\"FAIL: in=%b, out=%b (expected 0011)\", in, out); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) begin\n            $display(\"PASS: All %0d tests passed\", total_tests);\n        end else begin\n            $display(\"FAIL: %0d/%0d tests passed\", passed_tests, total_tests);\n        end\n        $finish;\n    end\nendmodule",
+    "hint": "Use the bitwise NOT operator (~). For example: assign out = ~in;",
+    "examples": [
+      {
+        "input": "in = 4'b0000",
+        "output": "out = 4'b1111",
+        "explanation": "Each bit is inverted independently"
+      },
+      {
+        "input": "in = 4'b1010",
+        "output": "out = 4'b0101",
+        "explanation": "Bitwise NOT operation on vector"
+      },
+      {
+        "input": "in = 4'b1111",
+        "output": "out = 4'b0000",
+        "explanation": "Complete complement of all bits"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"in": "4'b0000"},
+        "expected": {"out": "4'b1111"},
+        "description": "Invert all zeros to all ones"
+      },
+      {
+        "input": {"in": "4'b1010"},
+        "expected": {"out": "4'b0101"},
+        "description": "Invert alternating pattern"
+      },
+      {
+        "input": {"in": "4'b1111"},
+        "expected": {"out": "4'b0000"},
+        "description": "Invert all ones to all zeros"
+      },
+      {
+        "input": {"in": "4'b0110"},
+        "expected": {"out": "4'b1001"},
+        "description": "Invert specific pattern"
+      }
+    ],
+    "constraints": [
+      "Module name must be vector_not4",
+      "Input port must be named in (4-bit vector)",
+      "Output port must be named out (4-bit vector)",
+      "Invert all 4 bits independently",
+      "Use only combinational logic"
+    ]
+  },
+  {
     "id": "and_gate",
     "title": "AND Gate",
     "description": "Implement a 2-input AND gate. The output should be logic high only when both inputs are high. Use combinational logic with continuous assignment.",
     "difficulty": "easy",
     "category": "Combinational Logic",
-    "template": "module top_module(input a, b, output out);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire out;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .out(out));\n    \n    initial begin\n        $display(\"Testing AND gate...\");\n        \n        a=0; b=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b0) $display(\"FAIL 00\"); else passed_tests = passed_tests + 1;\n        \n        a=0; b=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b0) $display(\"FAIL 01\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b0) $display(\"FAIL 10\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 11\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
+    "template": "module top_module(input a, b, output out);\n  // Your code here\n  // Use AND operator: &\n  // Example: assign out = a & b;\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire out;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .out(out));\n    \n    initial begin\n        $display(\"Testing AND gate...\");\n        \n        a=0; b=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b0) $display(\"FAIL 00\"); else passed_tests = passed_tests + 1;\n        \n        a=0; b=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b0) $display(\"FAIL 01\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b0) $display(\"FAIL 10\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 11\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
+    "hint": "Use the & operator or write: assign out = a & b;",
+    "examples": [
+      {
+        "input": "a = 0, b = 0",
+        "output": "out = 0",
+        "explanation": "Both inputs low, output low"
+      },
+      {
+        "input": "a = 1, b = 1",
+        "output": "out = 1",
+        "explanation": "Both inputs high, output high"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"a": 0, "b": 0},
+        "expected": {"out": 0},
+        "description": "Both inputs low"
+      },
+      {
+        "input": {"a": 0, "b": 1},
+        "expected": {"out": 0},
+        "description": "One input low, one high"
+      },
+      {
+        "input": {"a": 1, "b": 0},
+        "expected": {"out": 0},
+        "description": "One input high, one low"
+      },
+      {
+        "input": {"a": 1, "b": 1},
+        "expected": {"out": 1},
+        "description": "Both inputs high"
+      }
+    ],
+    "constraints": [
+      "Module name must be top_module",
+      "Use only combinational logic",
+      "No sequential elements allowed",
+      "Must use continuous assignment"
+    ]
   },
   {
     "id": "or_gate",
@@ -14,8 +111,49 @@
     "description": "Implement a 2-input OR gate. The output should be logic high when at least one input is high. Use continuous assignment statement.",
     "difficulty": "easy",
     "category": "Combinational Logic",
-    "template": "module top_module(input a, b, output out);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire out;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .out(out));\n    \n    initial begin\n        $display(\"Testing OR gate...\");\n        \n        a=0; b=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b0) $display(\"FAIL 00\"); else passed_tests = passed_tests + 1;\n        \n        a=0; b=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 01\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 10\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 11\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
+    "template": "module top_module(input a, b, output out);\n  // Your code here\n  // Use OR operator: |\n  // Example: assign out = a | b;\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire out;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .out(out));\n    \n    initial begin\n        $display(\"Testing OR gate...\");\n        \n        a=0; b=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b0) $display(\"FAIL 00\"); else passed_tests = passed_tests + 1;\n        \n        a=0; b=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 01\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 10\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 11\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
+    "hint": "Use the | operator: assign out = a | b;",
+    "examples": [
+      {
+        "input": "a = 0, b = 0",
+        "output": "out = 0",
+        "explanation": "Both inputs low, output low"
+      },
+      {
+        "input": "a = 0, b = 1",
+        "output": "out = 1",
+        "explanation": "At least one input high, output high"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"a": 0, "b": 0},
+        "expected": {"out": 0},
+        "description": "Both inputs low"
+      },
+      {
+        "input": {"a": 0, "b": 1},
+        "expected": {"out": 1},
+        "description": "At least one input high"
+      },
+      {
+        "input": {"a": 1, "b": 0},
+        "expected": {"out": 1},
+        "description": "At least one input high"
+      },
+      {
+        "input": {"a": 1, "b": 1},
+        "expected": {"out": 1},
+        "description": "Both inputs high"
+      }
+    ],
+    "constraints": [
+      "Module name must be top_module",
+      "Use only combinational logic",
+      "No sequential elements",
+      "Use continuous assignment"
+    ]
   },
   {
     "id": "nand_gate",
@@ -23,8 +161,44 @@
     "description": "Implement a 2-input NAND gate. This is an AND gate followed by an inverter. Output is low only when both inputs are high.",
     "difficulty": "easy",
     "category": "Combinational Logic",
-    "template": "module top_module(input a, b, output out);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire out;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .out(out));\n    \n    initial begin\n        $display(\"Testing NAND gate...\");\n        \n        a=0; b=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 00\"); else passed_tests = passed_tests + 1;\n        \n        a=0; b=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 01\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 10\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b0) $display(\"FAIL 11\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
+    "template": "module top_module(input a, b, output out);\n  // Your code here\n  // Use: assign out = ~(a & b);\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire out;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .out(out));\n    \n    initial begin\n        $display(\"Testing NAND gate...\");\n        \n        a=0; b=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 00\"); else passed_tests = passed_tests + 1;\n        \n        a=0; b=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 01\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b1) $display(\"FAIL 10\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1'b0) $display(\"FAIL 11\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
+    "hint": "assign out = ~(a & b);",
+    "examples": [
+      {
+        "input": "a = 0, b = 0",
+        "output": "out = 1",
+        "explanation": "NAND of zeros is one"
+      },
+      {
+        "input": "a = 1, b = 1",
+        "output": "out = 0",
+        "explanation": "NAND of ones is zero"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"a": 0, "b": 0},
+        "expected": {"out": 1},
+        "description": "NAND of zeros is one"
+      },
+      {
+        "input": {"a": 0, "b": 1},
+        "expected": {"out": 1},
+        "description": "NAND with one zero"
+      },
+      {
+        "input": {"a": 1, "b": 1},
+        "expected": {"out": 0},
+        "description": "NAND of ones is zero"
+      }
+    ],
+    "constraints": [
+      "Module name must be top_module",
+      "Combinational logic only",
+      "Use bitwise operators",
+      "Single line assignment preferred"
+    ]
   },
   {
     "id": "d_flipflop",
@@ -32,8 +206,44 @@
     "description": "Implement a positive-edge triggered D flip-flop. The output q should capture the input d value only at rising clock edges and hold it otherwise.",
     "difficulty": "medium",
     "category": "Sequential Logic",
-    "template": "module top_module(input clk, input d, output reg q);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, d;\n    wire q;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .d(d), .q(q));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing D Flip-Flop...\");\n        \n        d=0; #10;\n        total_tests = total_tests + 1;\n        if (q !== 1'b0) $display(\"FAIL 1\"); else passed_tests = passed_tests + 1;\n        \n        d=1; #10;\n        total_tests = total_tests + 1;\n        if (q !== 1'b1) $display(\"FAIL 2\"); else passed_tests = passed_tests + 1;\n        \n        d=0; #10;\n        total_tests = total_tests + 1;\n        if (q !== 1'b0) $display(\"FAIL 3\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
+    "template": "module top_module(input clk, input d, output reg q);\n  // Your code here\n  // Use always @(posedge clk) block\n  // Example: always @(posedge clk) q <= d;\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, d;\n    wire q;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .d(d), .q(q));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing D Flip-Flop...\");\n        \n        d=0; #10;\n        total_tests = total_tests + 1;\n        if (q !== 1'b0) $display(\"FAIL 1\"); else passed_tests = passed_tests + 1;\n        \n        d=1; #10;\n        total_tests = total_tests + 1;\n        if (q !== 1'b1) $display(\"FAIL 2\"); else passed_tests = passed_tests + 1;\n        \n        d=0; #10;\n        total_tests = total_tests + 1;\n        if (q !== 1'b0) $display(\"FAIL 3\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
+    "hint": "Use: always @(posedge clk) q <= d;",
+    "examples": [
+      {
+        "input": "clk ↑, d = 1",
+        "output": "q = 1",
+        "explanation": "Output captures input on rising edge"
+      },
+      {
+        "input": "clk ↑, d = 0",
+        "output": "q = 0",
+        "explanation": "Output updates on clock edge"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"d": 0},
+        "expected": {"q": 0},
+        "description": "Reset state"
+      },
+      {
+        "input": {"d": 1},
+        "expected": {"q": 1},
+        "description": "Set on clock edge"
+      },
+      {
+        "input": {"d": 0},
+        "expected": {"q": 0},
+        "description": "Reset on clock edge"
+      }
+    ],
+    "constraints": [
+      "Module name must be top_module",
+      "Positive edge triggered",
+      "Non-blocking assignment",
+      "Register output q"
+    ]
   },
   {
     "id": "half_adder",
@@ -41,277 +251,48 @@
     "description": "Implement a half adder that adds two single-bit inputs a and b, producing sum and carry outputs. Sum = a XOR b, Carry = a AND b.",
     "difficulty": "easy",
     "category": "Arithmetic Circuits",
-    "template": "module top_module(input a, b, output sum, carry);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire sum, carry;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .sum(sum), .carry(carry));\n    \n    initial begin\n        $display(\"Testing Half Adder...\");\n        \n        a=0; b=0; #10;\n        total_tests = total_tests + 1;\n        if (!(sum===0 && carry===0)) $display(\"FAIL 00\"); else passed_tests = passed_tests + 1;\n        \n        a=0; b=1; #10;\n        total_tests = total_tests + 1;\n        if (!(sum===1 && carry===0)) $display(\"FAIL 01\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=0; #10;\n        total_tests = total_tests + 1;\n        if (!(sum===1 && carry===0)) $display(\"FAIL 10\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=1; #10;\n        total_tests = total_tests + 1;\n        if (!(sum===0 && carry===1)) $display(\"FAIL 11\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "full_adder",
-    "title": "Full Adder",
-    "description": "Implement a full adder that adds three single-bit inputs (a, b, cin) producing sum and carry outputs. Sum = a XOR b XOR cin, Carry = (a AND b) OR (cin AND (a XOR b)).",
-    "difficulty": "medium",
-    "category": "Arithmetic Circuits",
-    "template": "module top_module(input a, b, cin, output sum, cout);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b, cin;\n    wire sum, cout;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));\n    \n    initial begin\n        $display(\"Testing Full Adder...\");\n        \n        // Test 8 combinations\n        for (integer i = 0; i < 8; i++) begin\n            {a,b,cin} = i;\n            #10;\n            total_tests = total_tests + 1;\n            if ({cout,sum} !== (a+b+cin)) $display(\"FAIL %b\", i); else passed_tests = passed_tests + 1;\n        end\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "half_subtractor",
-    "title": "Half Subtractor",
-    "description": "Implement a half subtractor that subtracts b from a (a - b), producing difference and borrow outputs. Difference = a XOR b, Borrow = ~a AND b.",
-    "difficulty": "easy",
-    "category": "Arithmetic Circuits",
-    "template": "module top_module(input a, b, output diff, borrow);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire diff, borrow;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .diff(diff), .borrow(borrow));\n    \n    initial begin\n        $display(\"Testing Half Subtractor...\");\n        \n        a=0; b=0; #10;\n        total_tests = total_tests + 1;\n        if (!(diff===0 && borrow===0)) $display(\"FAIL 00\"); else passed_tests = passed_tests + 1;\n        \n        a=0; b=1; #10;\n        total_tests = total_tests + 1;\n        if (!(diff===1 && borrow===1)) $display(\"FAIL 01\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=0; #10;\n        total_tests = total_tests + 1;\n        if (!(diff===1 && borrow===0)) $display(\"FAIL 10\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=1; #10;\n        total_tests = total_tests + 1;\n        if (!(diff===0 && borrow===0)) $display(\"FAIL 11\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "full_subtractor",
-    "title": "Full Subtractor",
-    "description": "Implement a full subtractor that computes a - b - bin, producing difference and bout (borrow out). Use binary subtraction truth table.",
-    "difficulty": "medium",
-    "category": "Arithmetic Circuits",
-    "template": "module top_module(input a, b, bin, output diff, bout);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b, bin;\n    wire diff, bout;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .bin(bin), .diff(diff), .bout(bout));\n    \n    initial begin\n        $display(\"Testing Full Subtractor...\");\n        \n        for (integer i = 0; i < 8; i++) begin\n            {a,b,bin} = i;\n            #10;\n            total_tests = total_tests + 1;\n            expected_diff = a ^ b ^ bin;\n            expected_bout = (~a & b) | (~a & bin) | (b & bin);\n            if (!(diff===expected_diff && bout===expected_bout)) $display(\"FAIL %b\", i); else passed_tests = passed_tests + 1;\n        end\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "ripple_carry_adder",
-    "title": "4-bit Ripple Carry Adder",
-    "description": "Implement a 4-bit ripple carry adder using full adders. Connect carry-out of one stage to carry-in of next. Inputs: a[3:0], b[3:0], cin; Outputs: sum[3:0], cout.",
-    "difficulty": "medium",
-    "category": "Arithmetic Circuits",
-    "template": "module top_module(input [3:0] a, b, input cin, output [3:0] sum, output cout);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [3:0] a, b;\n    reg cin;\n    wire [3:0] sum;\n    wire cout;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));\n    \n    initial begin\n        $display(\"Testing 4-bit Ripple Carry Adder...\");\n        \n        // Random tests\n        for (integer i = 0; i < 20; i++) begin\n            a = $random; b = $random; cin = $random & 1;\n            #10;\n            total_tests = total_tests + 1;\n            expected = a + b + cin;\n            if ({cout,sum} !== expected) $display(\"FAIL %d\", i); else passed_tests = passed_tests + 1;\n        end\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "adder_subtractor_4bit",
-    "title": "4-bit Adder/Subtractor",
-    "description": "Implement a 4-bit adder/subtractor circuit. When sub=0, compute a+b; when sub=1, compute a-b using 2's complement. Output overflow flag.",
-    "difficulty": "hard",
-    "category": "Arithmetic Circuits",
-    "template": "module top_module(input [3:0] a, b, input sub, output [3:0] result, output overflow);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [3:0] a, b;\n    reg sub;\n    wire [3:0] result;\n    wire overflow;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .sub(sub), .result(result), .overflow(overflow));\n    \n    initial begin\n        $display(\"Testing 4-bit Adder/Subtractor...\");\n        \n        // Addition tests\n        sub = 0;\n        a=4; b=3; #10;\n        total_tests = total_tests + 1;\n        if (result !== 7) $display(\"FAIL add1\"); else passed_tests = passed_tests + 1;\n        \n        a=15; b=1; #10;\n        total_tests = total_tests + 1;\n        if (result !== 0 || overflow !== 0) $display(\"FAIL add2\"); else passed_tests = passed_tests + 1;\n        \n        // Subtraction tests\n        sub = 1;\n        a=10; b=4; #10;\n        total_tests = total_tests + 1;\n        if (result !== 6) $display(\"FAIL sub1\"); else passed_tests = passed_tests + 1;\n        \n        a=4; b=10; #10;\n        total_tests = total_tests + 1;\n        if (result !== -6) $display(\"FAIL sub2\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "carry_lookahead_adder",
-    "title": "4-bit Carry Look Ahead Adder",
-    "description": "Implement a 4-bit carry look ahead adder using generate and propagate signals. Compute carries in parallel to reduce delay.",
-    "difficulty": "hard",
-    "category": "Arithmetic Circuits",
-    "template": "module top_module(input [3:0] a, b, input cin, output [3:0] sum, output cout);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [3:0] a, b;\n    reg cin;\n    wire [3:0] sum;\n    wire cout;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));\n    \n    initial begin\n        $display(\"Testing Carry Look Ahead Adder...\");\n        \n        for (integer i = 0; i < 10; i++) begin\n            a = $random; b = $random; cin = $random & 1;\n            #10;\n            total_tests = total_tests + 1;\n            expected = a + b + cin;\n            if ({cout,sum} !== expected) $display(\"FAIL %d\", i); else passed_tests = passed_tests + 1;\n        end\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "binary_to_gray",
-    "title": "Binary to Gray Code Converter",
-    "description": "Implement a 4-bit binary to Gray code converter. Gray code is a binary numeral system where two successive values differ in only one bit.",
-    "difficulty": "easy",
-    "category": "Code Converters",
-    "template": "module top_module(input [3:0] binary, output [3:0] gray);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [3:0] binary;\n    wire [3:0] gray;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.binary(binary), .gray(gray));\n    \n    initial begin\n        $display(\"Testing Binary to Gray Converter...\");\n        \n        binary=0; #10;\n        total_tests = total_tests + 1;\n        if (gray !== 0) $display(\"FAIL 0\"); else passed_tests = passed_tests + 1;\n        \n        binary=1; #10;\n        total_tests = total_tests + 1;\n        if (gray !== 1) $display(\"FAIL 1\"); else passed_tests = passed_tests + 1;\n        \n        binary=2; #10;\n        total_tests = total_tests + 1;\n        if (gray !== 3) $display(\"FAIL 2\"); else passed_tests = passed_tests + 1;\n        \n        binary=15; #10;\n        total_tests = total_tests + 1;\n        if (gray !== 8) $display(\"FAIL 15\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "gray_to_binary",
-    "title": "Gray to Binary Code Converter",
-    "description": "Implement a 4-bit Gray code to binary converter. Recover binary value from Gray code using XOR operations.",
-    "difficulty": "easy",
-    "category": "Code Converters",
-    "template": "module top_module(input [3:0] gray, output [3:0] binary);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [3:0] gray;\n    wire [3:0] binary;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.gray(gray), .binary(binary));\n    \n    initial begin\n        $display(\"Testing Gray to Binary Converter...\");\n        \n        gray=0; #10;\n        total_tests = total_tests + 1;\n        if (binary !== 0) $display(\"FAIL 0\"); else passed_tests = passed_tests + 1;\n        \n        gray=1; #10;\n        total_tests = total_tests + 1;\n        if (binary !== 1) $display(\"FAIL 1\"); else passed_tests = passed_tests + 1;\n        \n        gray=3; #10;\n        total_tests = total_tests + 1;\n        if (binary !== 2) $display(\"FAIL 3\"); else passed_tests = passed_tests + 1;\n        \n        gray=8; #10;\n        total_tests = total_tests + 1;\n        if (binary !== 15) $display(\"FAIL 8\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "mux_2to1",
-    "title": "2:1 Multiplexer",
-    "description": "Implement a 2:1 multiplexer. When sel=0, output out = i0; when sel=1, out = i1. Use conditional operator or case statement.",
-    "difficulty": "easy",
-    "category": "Multiplexers",
-    "template": "module top_module(input i0, i1, sel, output out);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg i0, i1, sel;\n    wire out;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.i0(i0), .i1(i1), .sel(sel), .out(out));\n    \n    initial begin\n        $display(\"Testing 2:1 MUX...\");\n        \n        i0=1; i1=0; sel=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1) $display(\"FAIL sel0\"); else passed_tests = passed_tests + 1;\n        \n        i0=1; i1=0; sel=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 0) $display(\"FAIL sel1\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "mux_4to1",
-    "title": "4:1 Multiplexer",
-    "description": "Implement a 4:1 multiplexer with inputs i0,i1,i2,i3 and 2-bit select line sel. Use case statement or nested conditional operators.",
-    "difficulty": "easy",
-    "category": "Multiplexers",
-    "template": "module top_module(input [3:0] i, input [1:0] sel, output reg out);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [3:0] i;\n    reg [1:0] sel;\n    wire out;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.i(i), .sel(sel), .out(out));\n    \n    initial begin\n        $display(\"Testing 4:1 MUX...\");\n        \n        i=4'b1010;\n        sel=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 0) $display(\"FAIL sel0\"); else passed_tests = passed_tests + 1;\n        \n        sel=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1) $display(\"FAIL sel1\"); else passed_tests = passed_tests + 1;\n        \n        sel=2; #10;\n        total_tests = total_tests + 1;\n        if (out !== 0) $display(\"FAIL sel2\"); else passed_tests = passed_tests + 1;\n        \n        sel=3; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1) $display(\"FAIL sel3\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "mux_4to1_using_2to1",
-    "title": "4:1 MUX using 2:1 MUX",
-    "description": "Implement a 4:1 multiplexer using only 2:1 multiplexers as building blocks. Create hierarchical design.",
-    "difficulty": "medium",
-    "category": "Multiplexers",
-    "template": "module top_module(input [3:0] i, input [1:0] sel, output out);\n  // Your code here (instantiate 2:1 MUX modules)\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [3:0] i;\n    reg [1:0] sel;\n    wire out;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.i(i), .sel(sel), .out(out));\n    \n    initial begin\n        $display(\"Testing 4:1 MUX using 2:1 MUX...\");\n        \n        i=4'b1100;\n        sel=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 0) $display(\"FAIL sel0\"); else passed_tests = passed_tests + 1;\n        \n        sel=1; #10;\n        total_tests = total_tests + 1;\n        if (out !== 0) $display(\"FAIL sel1\"); else passed_tests = passed_tests + 1;\n        \n        sel=2; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1) $display(\"FAIL sel2\"); else passed_tests = passed_tests + 1;\n        \n        sel=3; #10;\n        total_tests = total_tests + 1;\n        if (out !== 1) $display(\"FAIL sel3\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "demux_1to2",
-    "title": "1:2 Demultiplexer",
-    "description": "Implement a 1:2 demultiplexer. When sel=0, output y0 = input; y1 = 0. When sel=1, y0 = 0; y1 = input.",
-    "difficulty": "easy",
-    "category": "Demultiplexers",
-    "template": "module top_module(input in, sel, output y0, y1);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg in, sel;\n    wire y0, y1;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.in(in), .sel(sel), .y0(y0), .y1(y1));\n    \n    initial begin\n        $display(\"Testing 1:2 DEMUX...\");\n        \n        in=1; sel=0; #10;\n        total_tests = total_tests + 1;\n        if (!(y0===1 && y1===0)) $display(\"FAIL sel0\"); else passed_tests = passed_tests + 1;\n        \n        in=1; sel=1; #10;\n        total_tests = total_tests + 1;\n        if (!(y0===0 && y1===1)) $display(\"FAIL sel1\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "demux_1to4",
-    "title": "1:4 Demultiplexer",
-    "description": "Implement a 1:4 demultiplexer with 2-bit select line. Only one output matches input based on sel value, others are 0.",
-    "difficulty": "easy",
-    "category": "Demultiplexers",
-    "template": "module top_module(input in, input [1:0] sel, output reg [3:0] y);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg in;\n    reg [1:0] sel;\n    wire [3:0] y;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.in(in), .sel(sel), .y(y));\n    \n    initial begin\n        $display(\"Testing 1:4 DEMUX...\");\n        \n        in=1;\n        sel=0; #10;\n        total_tests = total_tests + 1;\n        if (y !== 4'b0001) $display(\"FAIL sel0\"); else passed_tests = passed_tests + 1;\n        \n        sel=1; #10;\n        total_tests = total_tests + 1;\n        if (y !== 4'b0010) $display(\"FAIL sel1\"); else passed_tests = passed_tests + 1;\n        \n        sel=2; #10;\n        total_tests = total_tests + 1;\n        if (y !== 4'b0100) $display(\"FAIL sel2\"); else passed_tests = passed_tests + 1;\n        \n        sel=3; #10;\n        total_tests = total_tests + 1;\n        if (y !== 4'b1000) $display(\"FAIL sel3\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "binary_encoder",
-    "title": "8-to-3 Binary Encoder",
-    "description": "Implement an 8-to-3 binary encoder. Input is 8-bit one-hot, output is 3-bit binary of active high input index.",
-    "difficulty": "medium",
-    "category": "Encoders",
-    "template": "module top_module(input [7:0] in, output reg [2:0] out);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [7:0] in;\n    wire [2:0] out;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.in(in), .out(out));\n    \n    initial begin\n        $display(\"Testing Binary Encoder...\");\n        \n        in=8'b00000001; #10;\n        total_tests = total_tests + 1;\n        if (out !== 0) $display(\"FAIL 0\"); else passed_tests = passed_tests + 1;\n        \n        in=8'b00000100; #10;\n        total_tests = total_tests + 1;\n        if (out !== 2) $display(\"FAIL 2\"); else passed_tests = passed_tests + 1;\n        \n        in=8'b10000000; #10;\n        total_tests = total_tests + 1;\n        if (out !== 7) $display(\"FAIL 7\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "priority_encoder",
-    "title": "8-to-3 Priority Encoder",
-    "description": "Implement an 8-to-3 priority encoder with priority given to MSB. When multiple inputs high, output encodes highest priority input.",
-    "difficulty": "medium",
-    "category": "Encoders",
-    "template": "module top_module(input [7:0] in, output reg [2:0] out, output valid);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [7:0] in;\n    wire [2:0] out;\n    wire valid;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.in(in), .out(out), .valid(valid));\n    \n    initial begin\n        $display(\"Testing Priority Encoder...\");\n        \n        in=8'b00010000; #10;\n        total_tests = total_tests + 1;\n        if (!(out===4 && valid===1)) $display(\"FAIL single\"); else passed_tests = passed_tests + 1;\n        \n        in=8'b00100100; #10;\n        total_tests = total_tests + 1;\n        if (!(out===5 && valid===1)) $display(\"FAIL multiple\"); else passed_tests = passed_tests + 1;\n        \n        in=8'b00000000; #10;\n        total_tests = total_tests + 1;\n        if (!(valid===0)) $display(\"FAIL zero\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "decoder_3to8",
-    "title": "3-to-8 Decoder",
-    "description": "Implement a 3-to-8 decoder with enable. When enable=1, one of 8 outputs is high based on 3-bit input. Use case statement.",
-    "difficulty": "easy",
-    "category": "Decoders",
-    "template": "module top_module(input [2:0] in, input en, output reg [7:0] out);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [2:0] in;\n    reg en;\n    wire [7:0] out;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.in(in), .en(en), .out(out));\n    \n    initial begin\n        $display(\"Testing 3-to-8 Decoder...\");\n        \n        en=1;\n        in=0; #10;\n        total_tests = total_tests + 1;\n        if (out !== 8'b00000001) $display(\"FAIL 0\"); else passed_tests = passed_tests + 1;\n        \n        in=3; #10;\n        total_tests = total_tests + 1;\n        if (out !== 8'b00001000) $display(\"FAIL 3\"); else passed_tests = passed_tests + 1;\n        \n        in=7; #10;\n        total_tests = total_tests + 1;\n        if (out !== 8'b10000000) $display(\"FAIL 7\"); else passed_tests = passed_tests + 1;\n        \n        en=0; in=3; #10;\n        total_tests = total_tests + 1;\n        if (out !== 8'b00000000) $display(\"FAIL disabled\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "comparator_4bit",
-    "title": "4-bit Comparator",
-    "description": "Implement a 4-bit magnitude comparator. Output three flags: eq (a==b), gt (a>b), lt (a<b).",
-    "difficulty": "medium",
-    "category": "Comparators",
-    "template": "module top_module(input [3:0] a, b, output eq, gt, lt);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [3:0] a, b;\n    wire eq, gt, lt;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .eq(eq), .gt(gt), .lt(lt));\n    \n    initial begin\n        $display(\"Testing 4-bit Comparator...\");\n        \n        a=5; b=5; #10;\n        total_tests = total_tests + 1;\n        if (!(eq===1 && gt===0 && lt===0)) $display(\"FAIL equal\"); else passed_tests = passed_tests + 1;\n        \n        a=8; b=4; #10;\n        total_tests = total_tests + 1;\n        if (!(eq===0 && gt===1 && lt===0)) $display(\"FAIL greater\"); else passed_tests = passed_tests + 1;\n        \n        a=2; b=9; #10;\n        total_tests = total_tests + 1;\n        if (!(eq===0 && gt===0 && lt===1)) $display(\"FAIL less\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "array_multiplier",
-    "title": "4x4 Array Multiplier",
-    "description": "Implement a 4x4 unsigned array multiplier using AND gates and full adders. Multiply two 4-bit numbers to get 8-bit product.",
-    "difficulty": "hard",
-    "category": "Multipliers",
-    "template": "module top_module(input [3:0] a, b, output [7:0] product);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg [3:0] a, b;\n    wire [7:0] product;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .product(product));\n    \n    initial begin\n        $display(\"Testing Array Multiplier...\");\n        \n        a=3; b=4; #10;\n        total_tests = total_tests + 1;\n        if (product !== 12) $display(\"FAIL 1\"); else passed_tests = passed_tests + 1;\n        \n        a=10; b=5; #10;\n        total_tests = total_tests + 1;\n        if (product !== 50) $display(\"FAIL 2\"); else passed_tests = passed_tests + 1;\n        \n        a=15; b=15; #10;\n        total_tests = total_tests + 1;\n        if (product !== 225) $display(\"FAIL 3\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "dff_async_reset",
-    "title": "D Flip-Flop with Asynchronous Reset",
-    "description": "Implement a D flip-flop with active-high asynchronous reset. When reset=1, q=0 immediately regardless of clock.",
-    "difficulty": "medium",
-    "category": "Sequential Logic",
-    "template": "module top_module(input clk, reset, d, output reg q);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, reset, d;\n    wire q;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .reset(reset), .d(d), .q(q));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing DFF with Async Reset...\");\n        \n        reset=1; d=1; #15;\n        total_tests = total_tests + 1;\n        if (q !== 0) $display(\"FAIL reset\"); else passed_tests = passed_tests + 1;\n        \n        reset=0; #10;\n        total_tests = total_tests + 1;\n        if (q !== 1) $display(\"FAIL normal\"); else passed_tests = passed_tests + 1;\n        \n        reset=1; #5;\n        total_tests = total_tests + 1;\n        if (q !== 0) $display(\"FAIL async\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "dff_sync_reset",
-    "title": "D Flip-Flop with Synchronous Reset",
-    "description": "Implement a D flip-flop with active-high synchronous reset. When reset=1 at posedge clk, q=0.",
-    "difficulty": "medium",
-    "category": "Sequential Logic",
-    "template": "module top_module(input clk, reset, d, output reg q);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, reset, d;\n    wire q;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .reset(reset), .d(d), .q(q));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing DFF with Sync Reset...\");\n        \n        reset=1; d=1; #12;\n        total_tests = total_tests + 1;\n        if (q !== 0) $display(\"FAIL reset\"); else passed_tests = passed_tests + 1;\n        \n        reset=0; #10;\n        total_tests = total_tests + 1;\n        if (q !== 1) $display(\"FAIL normal\"); else passed_tests = passed_tests + 1;\n        \n        reset=1; d=0; #5;\n        total_tests = total_tests + 1;\n        if (q !== 1) $display(\"FAIL no async\"); else passed_tests = passed_tests + 1;\n        \n        #5;\n        total_tests = total_tests + 1;\n        if (q !== 0) $display(\"FAIL sync\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "sr_flipflop",
-    "title": "SR Flip-Flop",
-    "description": "Implement a clocked SR flip-flop. When S=1,R=0: q=1; S=0,R=1: q=0; S=0,R=0: hold; S=1,R=1: invalid.",
-    "difficulty": "medium",
-    "category": "Sequential Logic",
-    "template": "module top_module(input clk, s, r, output reg q);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, s, r;\n    wire q;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .s(s), .r(r), .q(q));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing SR Flip-Flop...\");\n        \n        s=1; r=0; #10;\n        total_tests = total_tests + 1;\n        if (q !== 1) $display(\"FAIL set\"); else passed_tests = passed_tests + 1;\n        \n        s=0; r=1; #10;\n        total_tests = total_tests + 1;\n        if (q !== 0) $display(\"FAIL reset\"); else passed_tests = passed_tests + 1;\n        \n        s=0; r=0; #10;\n        total_tests = total_tests + 1;\n        if (q !== 0) $display(\"FAIL hold\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "jk_flipflop",
-    "title": "JK Flip-Flop",
-    "description": "Implement a JK flip-flop. J=1,K=0: set; J=0,K=1: reset; J=1,K=1: toggle; J=0,K=0: hold.",
-    "difficulty": "medium",
-    "category": "Sequential Logic",
-    "template": "module top_module(input clk, j, k, output reg q);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, j, k;\n    wire q;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .j(j), .k(k), .q(q));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing JK Flip-Flop...\");\n        \n        q=0; j=1; k=0; #10;\n        total_tests = total_tests + 1;\n        if (q !== 1) $display(\"FAIL set\"); else passed_tests = passed_tests + 1;\n        \n        j=0; k=1; #10;\n        total_tests = total_tests + 1;\n        if (q !== 0) $display(\"FAIL reset\"); else passed_tests = passed_tests + 1;\n        \n        j=1; k=1; #10;\n        total_tests = total_tests + 1;\n        if (q !== 1) $display(\"FAIL toggle1\"); else passed_tests = passed_tests + 1;\n        \n        #10;\n        total_tests = total_tests + 1;\n        if (q !== 0) $display(\"FAIL toggle2\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "t_flipflop",
-    "title": "T Flip-Flop",
-    "description": "Implement a T flip-flop. When T=1, output toggles on clock edge; T=0, output holds.",
-    "difficulty": "medium",
-    "category": "Sequential Logic",
-    "template": "module top_module(input clk, t, output reg q);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, t;\n    wire q;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .t(t), .q(q));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing T Flip-Flop...\");\n        \n        q=0; t=1; #10;\n        total_tests = total_tests + 1;\n        if (q !== 1) $display(\"FAIL toggle1\"); else passed_tests = passed_tests + 1;\n        \n        #10;\n        total_tests = total_tests + 1;\n        if (q !== 0) $display(\"FAIL toggle2\"); else passed_tests = passed_tests + 1;\n        \n        t=0; #10;\n        total_tests = total_tests + 1;\n        if (q !== 0) $display(\"FAIL hold\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "universal_shift_register",
-    "title": "4-bit Universal Shift Register",
-    "description": "Implement a 4-bit universal shift register with modes: 00-hold, 01-shift right, 10-shift left, 11-parallel load.",
-    "difficulty": "hard",
-    "category": "Sequential Logic",
-    "template": "module top_module(input clk, reset, input [1:0] mode, input [3:0] din, input ser_in, output reg [3:0] q);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, reset, ser_in;\n    reg [1:0] mode;\n    reg [3:0] din;\n    wire [3:0] q;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .reset(reset), .mode(mode), .din(din), .ser_in(ser_in), .q(q));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing Universal Shift Register...\");\n        \n        reset=1; #10; reset=0;\n        mode=2'b11; din=4'b1010; #10;\n        total_tests = total_tests + 1;\n        if (q !== 4'b1010) $display(\"FAIL load\"); else passed_tests = passed_tests + 1;\n        \n        mode=2'b01; ser_in=1; #10;\n        total_tests = total_tests + 1;\n        if (q !== 4'b1101) $display(\"FAIL shift right\"); else passed_tests = passed_tests + 1;\n        \n        mode=2'b10; ser_in=0; #10;\n        total_tests = total_tests + 1;\n        if (q !== 4'b1010) $display(\"FAIL shift left\"); else passed_tests = passed_tests + 1;\n        \n        mode=2'b00; #10;\n        total_tests = total_tests + 1;\n        if (q !== 4'b1010) $display(\"FAIL hold\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "lfsr",
-    "title": "8-bit LFSR (Linear Feedback Shift Register)",
-    "description": "Implement an 8-bit LFSR with polynomial x^8 + x^4 + x^3 + x^2 + 1. Generate pseudo-random sequence.",
-    "difficulty": "hard",
-    "category": "Sequential Logic",
-    "template": "module top_module(input clk, reset, output reg [7:0] q);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, reset;\n    wire [7:0] q;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .reset(reset), .q(q));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing LFSR...\");\n        \n        reset=1; #10; reset=0;\n        total_tests = total_tests + 1;\n        if (q !== 8'b00000001) $display(\"FAIL init\"); else passed_tests = passed_tests + 1;\n        \n        #10;\n        total_tests = total_tests + 1;\n        if (q !== 8'b10001000) $display(\"FAIL step1\"); else passed_tests = passed_tests + 1;\n        \n        #10;\n        total_tests = total_tests + 1;\n        if (q !== 8'b01000100) $display(\"FAIL step2\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "async_counter",
-    "title": "4-bit Asynchronous Counter",
-    "description": "Implement a 4-bit asynchronous (ripple) counter using T flip-flops. Each flip-flop toggles on negative edge of previous stage.",
-    "difficulty": "medium",
-    "category": "Counters",
-    "template": "module top_module(input clk, reset, output [3:0] q);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, reset;\n    wire [3:0] q;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .reset(reset), .q(q));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing Asynchronous Counter...\");\n        \n        reset=1; #10; reset=0;\n        total_tests = total_tests + 1;\n        if (q !== 0) $display(\"FAIL reset\"); else passed_tests = passed_tests + 1;\n        \n        #80;\n        total_tests = total_tests + 1;\n        if (q !== 1) $display(\"FAIL count\"); else passed_tests = passed_tests + 1;\n        \n        #80;\n        total_tests = total_tests + 1;\n        if (q !== 2) $display(\"FAIL count2\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "sync_counter",
-    "title": "4-bit Synchronous Counter",
-    "description": "Implement a 4-bit synchronous counter. All flip-flops update simultaneously on clock edge.",
-    "difficulty": "medium",
-    "category": "Counters",
-    "template": "module top_module(input clk, reset, output reg [3:0] q);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, reset;\n    wire [3:0] q;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .reset(reset), .q(q));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing Synchronous Counter...\");\n        \n        reset=1; #10; reset=0;\n        total_tests = total_tests + 1;\n        if (q !== 0) $display(\"FAIL reset\"); else passed_tests = passed_tests + 1;\n        \n        #10;\n        total_tests = total_tests + 1;\n        if (q !== 1) $display(\"FAIL step1\"); else passed_tests = passed_tests + 1;\n        \n        #10;\n        total_tests = total_tests + 1;\n        if (q !== 2) $display(\"FAIL step2\"); else passed_tests = passed_tests + 1;\n        \n        #10;\n        total_tests = total_tests + 1;\n        if (q !== 3) $display(\"FAIL step3\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "mealy_seq_detector",
-    "title": "Mealy Sequence Detector (1011)",
-    "description": "Implement a Mealy machine to detect sequence 1011. Output should be 1 when sequence detected, overlapping allowed.",
-    "difficulty": "hard",
-    "category": "Finite State Machines",
-    "template": "module top_module(input clk, reset, input din, output reg dout);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, reset, din;\n    wire dout;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .reset(reset), .din(din), .dout(dout));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing Mealy Sequence Detector...\");\n        \n        reset=1; #10; reset=0;\n        din=1; #10;\n        din=0; #10;\n        din=1; #10;\n        din=1; #10;\n        total_tests = total_tests + 1;\n        if (dout !== 1) $display(\"FAIL detect\"); else passed_tests = passed_tests + 1;\n        \n        din=0; #10;\n        total_tests = total_tests + 1;\n        if (dout !== 0) $display(\"FAIL after\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "moore_seq_detector",
-    "title": "Moore Sequence Detector (1011)",
-    "description": "Implement a Moore machine to detect sequence 1011. Output is 1 only when in final state, overlapping allowed.",
-    "difficulty": "hard",
-    "category": "Finite State Machines",
-    "template": "module top_module(input clk, reset, input din, output reg dout);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, reset, din;\n    wire dout;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .reset(reset), .din(din), .dout(dout));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing Moore Sequence Detector...\");\n        \n        reset=1; #10; reset=0;\n        din=1; #10;\n        din=0; #10;\n        din=1; #10;\n        din=1; #10;\n        total_tests = total_tests + 1;\n        if (dout !== 1) $display(\"FAIL detect\"); else passed_tests = passed_tests + 1;\n        \n        din=0; #10;\n        total_tests = total_tests + 1;\n        if (dout !== 0) $display(\"FAIL after\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
-  },
-  {
-    "id": "sync_fifo",
-    "title": "Synchronous FIFO (Depth 8, Width 8)",
-    "description": "Implement a synchronous FIFO with depth 8 and data width 8. Include full and empty flags. Use dual-port RAM style.",
-    "difficulty": "hard",
-    "category": "Memory Elements",
-    "template": "module top_module(input clk, reset, input wr_en, rd_en, input [7:0] din, output [7:0] dout, output full, empty);\n  // Your code here\nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg clk=0, reset, wr_en, rd_en;\n    reg [7:0] din;\n    wire [7:0] dout;\n    wire full, empty;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.clk(clk), .reset(reset), .wr_en(wr_en), .rd_en(rd_en), .din(din), .dout(dout), .full(full), .empty(empty));\n    always #5 clk = ~clk;\n    \n    initial begin\n        $display(\"Testing Synchronous FIFO...\");\n        \n        reset=1; #10; reset=0;\n        total_tests = total_tests + 1;\n        if (empty !== 1) $display(\"FAIL empty\"); else passed_tests = passed_tests + 1;\n        \n        wr_en=1; din=8'hAA; #10;\n        total_tests = total_tests + 1;\n        if (empty !== 0) $display(\"FAIL not empty\"); else passed_tests = passed_tests + 1;\n        \n        rd_en=1; wr_en=0; #10;\n        total_tests = total_tests + 1;\n        if (dout !== 8'hAA) $display(\"FAIL read\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule"
+    "template": "module top_module(input a, b, output sum, carry);\n  // Your code here\n  // Sum = a XOR b\n  // Carry = a AND b\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire sum, carry;\n    integer passed_tests = 0;\n    integer total_tests = 0;\n    \n    top_module dut (.a(a), .b(b), .sum(sum), .carry(carry));\n    \n    initial begin\n        $display(\"Testing Half Adder...\");\n        \n        a=0; b=0; #10;\n        total_tests = total_tests + 1;\n        if (!(sum===0 && carry===0)) $display(\"FAIL 00\"); else passed_tests = passed_tests + 1;\n        \n        a=0; b=1; #10;\n        total_tests = total_tests + 1;\n        if (!(sum===1 && carry===0)) $display(\"FAIL 01\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=0; #10;\n        total_tests = total_tests + 1;\n        if (!(sum===1 && carry===0)) $display(\"FAIL 10\"); else passed_tests = passed_tests + 1;\n        \n        a=1; b=1; #10;\n        total_tests = total_tests + 1;\n        if (!(sum===0 && carry===1)) $display(\"FAIL 11\"); else passed_tests = passed_tests + 1;\n        \n        if (passed_tests == total_tests) $display(\"PASS\"); else $display(\"FAIL\");\n        $finish;\n    end\nendmodule",
+    "hint": "assign sum = a ^ b; assign carry = a & b;",
+    "examples": [
+      {
+        "input": "a = 0, b = 0",
+        "output": "sum = 0, carry = 0",
+        "explanation": "0 + 0 = 0"
+      },
+      {
+        "input": "a = 1, b = 1",
+        "output": "sum = 0, carry = 1",
+        "explanation": "1 + 1 = 2 (binary 10)"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"a": 0, "b": 0},
+        "expected": {"sum": 0, "carry": 0},
+        "description": "0 + 0 = 0"
+      },
+      {
+        "input": {"a": 0, "b": 1},
+        "expected": {"sum": 1, "carry": 0},
+        "description": "0 + 1 = 1"
+      },
+      {
+        "input": {"a": 1, "b": 0},
+        "expected": {"sum": 1, "carry": 0},
+        "description": "1 + 0 = 1"
+      },
+      {
+        "input": {"a": 1, "b": 1},
+        "expected": {"sum": 0, "carry": 1},
+        "description": "1 + 1 = 2"
+      }
+    ],
+    "constraints": [
+      "Module name must be top_module",
+      "Use combinational logic only",
+      "Two outputs: sum and carry",
+      "No clock signal needed"
+    ]
   }
 ]

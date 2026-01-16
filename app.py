@@ -44,13 +44,22 @@ class CodeRequest(BaseModel):
     code: str
     user_id: str = "anonymous"
     generate_waveform: bool = False
+# Add this function right before loading PROBLEMS
+def clean_json(text):
+    """Remove control characters that break JSON parsing"""
+    return ''.join(char for char in text if ord(char) >= 32 or char in '\n\r\t')
 
 # Load problems
 PROBLEMS = []
-with open("problems.json", "r") as f:
-    PROBLEMS = json.load(f)
-logger.info(f"Loaded {len(PROBLEMS)} problems")
-
+try:
+    with open("problems.json", "r", encoding="utf-8") as f:
+        content = f.read()
+        cleaned_content = clean_json(content)  # Clean it!
+        PROBLEMS = json.loads(cleaned_content)
+    logger.info(f"Loaded {len(PROBLEMS)} problems")
+except Exception as e:
+    logger.error(f"Error loading problems: {e}")
+    PROBLEMS = []
 @app.get("/")
 async def root():
     return {"status": "VLSI Practice API", "version": "4.0"}

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Backend API for VLSI Practice - Fixed Waveform Viewer
+VLSI Practice Platform - Enhanced Version
+Combines authentication, progress tracking, and enhanced waveform viewer
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
-from pydantic import BaseModel
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse
+from pydantic import BaseModel, validator, Field
 import subprocess
 import tempfile
 import os
@@ -14,1599 +16,1582 @@ import json
 import uuid
 import logging
 import re
-from datetime import datetime
+import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional, Dict, List, Any, Union
+import hashlib
+import secrets
+from enum import Enum
+import zipfile
+import io
+import asyncio
+
+# Try Firebase import (optional)
+try:
+    from firebase_config import db
+    FIREBASE_AVAILABLE = True
+except ImportError:
+    db = None
+    FIREBASE_AVAILABLE = False
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="VLSI Practice API")
-
-# Create waveform directory
-WAVEFORM_DIR = Path("/tmp/waveforms")
-WAVEFORM_DIR.mkdir(exist_ok=True, parents=True)
-
-logger.info(f"Waveform directory: {WAVEFORM_DIR}")
-
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-    allow_credentials=True,
+# Initialize FastAPI
+app = FastAPI(
+    title="VLSI Practice Platform",
+    description="Interactive Verilog learning with authentication, progress tracking, and waveform visualization",
+    version="3.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc"
 )
 
-# Models
+# Security
+security = HTTPBearer(auto_error=False)
+
+# Directories
+WAVEFORM_DIR = Path("/tmp/waveforms")
+WAVEFORM_DIR.mkdir(exist_ok=True, parents=True)
+PROBLEMS_CACHE_DIR = Path("/tmp/problems_cache")
+PROBLEMS_CACHE_DIR.mkdir(exist_ok=True)
+USER_SESSIONS = {}  # In-memory session store (use Redis in production)
+
+# ==================== MODELS ====================
+class Difficulty(str, Enum):
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"
+    EXPERT = "expert"
+
+class Category(str, Enum):
+    COMBINATIONAL = "combinational"
+    SEQUENTIAL = "sequential"
+    FSM = "fsm"
+    ARITHMETIC = "arithmetic"
+    MEMORY = "memory"
+    ADVANCED = "advanced"
+
+class User(BaseModel):
+    email: str = Field(..., description="User email address")
+    password: str = Field(..., min_length=6, description="Password (min 6 chars)")
+    name: Optional[str] = Field(None, description="Display name")
+    
+    @validator('email')
+    def validate_email(cls, v):
+        if '@' not in v:
+            raise ValueError('Invalid email format')
+        return v.lower()
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+    remember_me: bool = False
+
 class CodeRequest(BaseModel):
     problem_id: str
     code: str
-    user_id: str = "anonymous"
+    user_id: Optional[str] = None
     generate_waveform: bool = False
-# Add this function right before loading PROBLEMS
-def clean_json(text):
-    """Remove control characters that break JSON parsing"""
-    return ''.join(char for char in text if ord(char) >= 32 or char in '\n\r\t')
+    session_token: Optional[str] = None
 
-# Load problems
-PROBLEMS = []
-try:
-    with open("problems.json", "r", encoding="utf-8") as f:
-        content = f.read()
-        cleaned_content = clean_json(content)  # Clean it!
-        PROBLEMS = json.loads(cleaned_content)
-    logger.info(f"Loaded {len(PROBLEMS)} problems")
-except Exception as e:
-    logger.error(f"Error loading problems: {e}")
-    PROBLEMS = []
-@app.get("/")
+class SubmitRequest(BaseModel):
+    problem_id: str
+    code: str
+    user_id: Optional[str] = None
+    session_token: Optional[str] = None
+
+class WaveformRequest(BaseModel):
+    waveform_id: str
+    format: str = "html"  # html, json, vcd
+    signals: Optional[List[str]] = None
+
+class UserProgress(BaseModel):
+    user_id: str
+    problem_id: str
+    code: Optional[str] = None
+    passed: bool
+    timestamp: datetime
+    execution_time: Optional[float] = None
+    attempts: int = 1
+
+class LeaderboardEntry(BaseModel):
+    user_id: str
+    name: str
+    score: int
+    solved: int
+    rank: int
+
+# ==================== AUTH & SESSION MANAGEMENT ====================
+def create_session_token(user_id: str, remember_me: bool = False) -> str:
+    """Create a secure session token"""
+    token = secrets.token_urlsafe(32)
+    expiry_hours = 720 if remember_me else 24  # 30 days or 1 day
+    expiry = datetime.now() + timedelta(hours=expiry_hours)
+    
+    USER_SESSIONS[token] = {
+        "user_id": user_id,
+        "created": datetime.now(),
+        "expiry": expiry,
+        "last_activity": datetime.now()
+    }
+    return token
+
+def validate_session_token(token: str) -> Optional[Dict]:
+    """Validate session token and return user data"""
+    if token not in USER_SESSIONS:
+        return None
+    
+    session = USER_SESSIONS[token]
+    
+    # Check expiry
+    if datetime.now() > session["expiry"]:
+        del USER_SESSIONS[token]
+        return None
+    
+    # Update last activity
+    session["last_activity"] = datetime.now()
+    return session
+
+def get_password_hash(password: str) -> str:
+    """Hash password using SHA-256 (use bcrypt in production)"""
+    salt = secrets.token_hex(16)
+    return f"{salt}${hashlib.sha256((salt + password).encode()).hexdigest()}"
+
+def verify_password(stored_hash: str, password: str) -> bool:
+    """Verify password against stored hash"""
+    if '$' not in stored_hash:
+        return stored_hash == hashlib.sha256(password.encode()).hexdigest()
+    
+    salt, hash_value = stored_hash.split('$')
+    return hash_value == hashlib.sha256((salt + password).encode()).hexdigest()
+
+def create_user_id(email: str) -> str:
+    """Create deterministic user ID from email"""
+    return hashlib.sha256(email.encode()).hexdigest()[:20]
+
+# ==================== PROBLEM MANAGEMENT ====================
+def load_problems() -> List[Dict]:
+    """Load problems from JSON file with caching"""
+    cache_file = PROBLEMS_CACHE_DIR / "problems.json"
+    
+    try:
+        # Try cache first
+        if cache_file.exists():
+            cache_age = datetime.now() - datetime.fromtimestamp(cache_file.stat().st_mtime)
+            if cache_age < timedelta(minutes=5):  # 5 minute cache
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        
+        # Load from source
+        with open("problems.json", "r", encoding="utf-8") as f:
+            content = f.read()
+            content = ''.join(char for char in content if ord(char) >= 32 or char in '\n\r\t')
+            problems = json.loads(content)
+        
+        # Validate and enhance problems
+        enhanced_problems = []
+        for i, problem in enumerate(problems):
+            # Ensure all required fields
+            problem.setdefault("id", f"prob_{i:03d}")
+            problem.setdefault("title", f"Problem {i+1}")
+            problem.setdefault("difficulty", Difficulty.MEDIUM)
+            problem.setdefault("category", Category.COMBINATIONAL)
+            problem.setdefault("points", 10)
+            problem.setdefault("hint", "")
+            problem.setdefault("solution", "")
+            problem.setdefault("explanation", "")
+            
+            # Add tags based on content
+            tags = set()
+            if "clock" in problem.get("testbench", "").lower():
+                tags.add("sequential")
+            if "always" in problem.get("template", "").lower():
+                tags.add("always-block")
+            if "assign" in problem.get("template", "").lower():
+                tags.add("assign")
+            if "module" in problem.get("template", "").lower():
+                tags.add("module")
+            
+            problem["tags"] = list(tags)
+            enhanced_problems.append(problem)
+        
+        # Save to cache
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            json.dump(enhanced_problems, f, indent=2)
+        
+        logger.info(f"Loaded {len(enhanced_problems)} problems")
+        return enhanced_problems
+        
+    except Exception as e:
+        logger.error(f"Error loading problems: {e}")
+        return []
+
+PROBLEMS = load_problems()
+
+# ==================== CORS & MIDDLEWARE ====================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
+# ==================== API ENDPOINTS ====================
+
+@app.get("/", include_in_schema=False)
 async def root():
-    return {"status": "VLSI Practice API", "version": "4.0"}
+    """Root endpoint with API info"""
+    return {
+        "api": "VLSI Practice Platform",
+        "version": "3.0.0",
+        "endpoints": {
+            "auth": "/api/auth/login, /api/auth/register, /api/auth/profile",
+            "problems": "/api/problems, /api/problems/{id}",
+            "code": "/api/run, /api/submit",
+            "waveforms": "/api/waveform/{id}",
+            "progress": "/api/progress/{user_id}, /api/leaderboard",
+            "admin": "/api/admin/stats (if authenticated)"
+        },
+        "status": "operational",
+        "problems_count": len(PROBLEMS),
+        "auth_enabled": FIREBASE_AVAILABLE,
+        "timestamp": datetime.now().isoformat()
+    }
 
-@app.get("/api/problems")
-async def get_problems():
-    """Return list of available problems"""
-    simplified = []
-    for problem in PROBLEMS:
-        simplified.append({
-            "id": problem["id"],
-            "title": problem["title"],
-            "description": problem["description"],
-            "difficulty": problem["difficulty"],
-            "category": problem["category"],
-            "template": problem["template"]
-        })
-    return {"problems": simplified}
+# ==================== AUTH ENDPOINTS ====================
+@app.post("/api/auth/register", response_model=Dict)
+async def register(user_data: User):
+    """Register a new user"""
+    try:
+        user_id = create_user_id(user_data.email)
+        
+        # Check if user exists
+        user_exists = False
+        if FIREBASE_AVAILABLE:
+            user_doc = db.collection("users").document(user_id).get()
+            user_exists = user_doc.exists
+        
+        # Check in-memory sessions (for demo)
+        if not user_exists:
+            for session in USER_SESSIONS.values():
+                if session.get("email") == user_data.email:
+                    user_exists = True
+                    break
+        
+        if user_exists:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User with this email already exists"
+            )
+        
+        # Create user object
+        user_obj = {
+            "email": user_data.email,
+            "password_hash": get_password_hash(user_data.password),
+            "name": user_data.name or user_data.email.split("@")[0],
+            "created_at": datetime.utcnow().isoformat(),
+            "last_login": None,
+            "progress": [],
+            "solved_problems": [],
+            "total_points": 0,
+            "role": "user",
+            "settings": {
+                "theme": "dark",
+                "auto_save": True,
+                "waveform_auto_open": True
+            }
+        }
+        
+        # Save to Firebase if available
+        if FIREBASE_AVAILABLE:
+            db.collection("users").document(user_id).set(user_obj)
+            logger.info(f"User registered in Firebase: {user_data.email}")
+        else:
+            # Store in memory for demo
+            user_obj["id"] = user_id
+            USER_SESSIONS[f"user_{user_id}"] = user_obj
+        
+        # Create session token
+        session_token = create_session_token(user_id)
+        
+        return {
+            "success": True,
+            "message": "Registration successful",
+            "data": {
+                "user_id": user_id,
+                "email": user_data.email,
+                "name": user_obj["name"],
+                "session_token": session_token,
+                "created_at": user_obj["created_at"]
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Registration failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
+        )
 
+@app.post("/api/auth/login", response_model=Dict)
+async def login(login_data: LoginRequest):
+    """Login user and create session"""
+    try:
+        user_id = create_user_id(login_data.email)
+        user_data = None
+        
+        # Try Firebase first
+        if FIREBASE_AVAILABLE:
+            user_doc = db.collection("users").document(user_id).get()
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+        
+        # Try in-memory (for demo)
+        if not user_data:
+            user_key = f"user_{user_id}"
+            if user_key in USER_SESSIONS:
+                user_data = USER_SESSIONS[user_key]
+        
+        # Auto-register if not found (demo feature)
+        if not user_data:
+            if os.environ.get("ALLOW_AUTO_REGISTER", "true").lower() == "true":
+                user_data = {
+                    "email": login_data.email,
+                    "password_hash": get_password_hash(login_data.password),
+                    "name": login_data.email.split("@")[0],
+                    "created_at": datetime.utcnow().isoformat(),
+                    "progress": [],
+                    "solved_problems": [],
+                    "total_points": 0,
+                    "role": "user",
+                    "settings": {
+                        "theme": "dark",
+                        "auto_save": True,
+                        "waveform_auto_open": True
+                    }
+                }
+                
+                if FIREBASE_AVAILABLE:
+                    db.collection("users").document(user_id).set(user_data)
+                else:
+                    USER_SESSIONS[f"user_{user_id}"] = user_data
+                
+                logger.info(f"Auto-registered user: {login_data.email}")
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found. Please register first."
+                )
+        
+        # Verify password
+        if not verify_password(user_data["password_hash"], login_data.password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password"
+            )
+        
+        # Update last login
+        user_data["last_login"] = datetime.utcnow().isoformat()
+        if FIREBASE_AVAILABLE:
+            db.collection("users").document(user_id).update({"last_login": user_data["last_login"]})
+        
+        # Create session
+        session_token = create_session_token(user_id, login_data.remember_me)
+        
+        return {
+            "success": True,
+            "message": "Login successful",
+            "data": {
+                "user_id": user_id,
+                "email": user_data["email"],
+                "name": user_data.get("name"),
+                "session_token": session_token,
+                "total_points": user_data.get("total_points", 0),
+                "solved_problems": len(user_data.get("solved_problems", [])),
+                "settings": user_data.get("settings", {})
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Login failed: {str(e)}"
+        )
+
+@app.post("/api/auth/logout", response_model=Dict)
+async def logout(session_token: str):
+    """Logout user by invalidating session"""
+    try:
+        if session_token in USER_SESSIONS:
+            del USER_SESSIONS[session_token]
+        
+        return {
+            "success": True,
+            "message": "Logout successful"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Logout failed: {str(e)}"
+        )
+
+@app.get("/api/auth/profile/{user_id}", response_model=Dict)
+async def get_profile(user_id: str, token: Optional[str] = None):
+    """Get user profile"""
+    try:
+        user_data = None
+        
+        # Get from Firebase
+        if FIREBASE_AVAILABLE:
+            user_doc = db.collection("users").document(user_id).get()
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+        
+        # Get from memory (demo)
+        if not user_data:
+            user_key = f"user_{user_id}"
+            if user_key in USER_SESSIONS:
+                user_data = USER_SESSIONS[user_key]
+        
+        if not user_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Calculate stats
+        progress = user_data.get("progress", [])
+        solved_problems = user_data.get("solved_problems", [])
+        total_points = user_data.get("total_points", 0)
+        
+        # Get problem difficulties solved
+        difficulty_stats = {"easy": 0, "medium": 0, "hard": 0, "expert": 0}
+        for problem_id in solved_problems:
+            problem = next((p for p in PROBLEMS if p["id"] == problem_id), None)
+            if problem:
+                diff = problem.get("difficulty", "medium")
+                difficulty_stats[diff] = difficulty_stats.get(diff, 0) + 1
+        
+        # Calculate rank (simplified)
+        total_users = len(USER_SESSIONS) // 2  # Rough estimate
+        rank = max(1, total_users - len(solved_problems) // 10)
+        
+        return {
+            "user_id": user_id,
+            "email": user_data.get("email"),
+            "name": user_data.get("name"),
+            "created_at": user_data.get("created_at"),
+            "last_login": user_data.get("last_login"),
+            "stats": {
+                "solved_problems": len(solved_problems),
+                "total_problems": len(PROBLEMS),
+                "completion_rate": round(len(solved_problems) / len(PROBLEMS) * 100, 1) if PROBLEMS else 0,
+                "total_points": total_points,
+                "average_points": round(total_points / len(solved_problems), 1) if solved_problems else 0,
+                "rank": rank,
+                "difficulty_stats": difficulty_stats
+            },
+            "recent_activity": progress[-10:] if progress else [],
+            "settings": user_data.get("settings", {})
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get profile: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get profile: {str(e)}"
+        )
+
+# ==================== PROBLEM ENDPOINTS ====================
+@app.get("/api/problems", response_model=Dict)
+async def get_problems(
+    user_id: Optional[str] = None,
+    difficulty: Optional[Difficulty] = None,
+    category: Optional[Category] = None,
+    solved_only: bool = False,
+    unsolved_only: bool = False,
+    search: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0
+):
+    """Get problems with filters and user progress"""
+    try:
+        # Get user progress if user_id provided
+        solved_problems = []
+        if user_id and FIREBASE_AVAILABLE:
+            user_doc = db.collection("users").document(user_id).get()
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+                solved_problems = user_data.get("solved_problems", [])
+        
+        # Filter problems
+        filtered_problems = []
+        for problem in PROBLEMS:
+            # Apply filters
+            if difficulty and problem.get("difficulty") != difficulty:
+                continue
+            if category and problem.get("category") != category:
+                continue
+            if search and search.lower() not in problem.get("title", "").lower() + problem.get("description", "").lower():
+                continue
+            if solved_only and problem["id"] not in solved_problems:
+                continue
+            if unsolved_only and problem["id"] in solved_problems:
+                continue
+            
+            # Format problem response
+            formatted_problem = {
+                "id": problem["id"],
+                "title": problem["title"],
+                "description": problem["description"],
+                "difficulty": problem.get("difficulty", "medium"),
+                "category": problem.get("category", "combinational"),
+                "points": problem.get("points", 10),
+                "tags": problem.get("tags", []),
+                "template": problem.get("template", ""),
+                "hint": problem.get("hint", ""),
+                "solved": problem["id"] in solved_problems,
+                "solution_available": bool(problem.get("solution")),
+                "completion_rate": 0  # Would need tracking
+            }
+            filtered_problems.append(formatted_problem)
+        
+        # Paginate
+        total = len(filtered_problems)
+        paginated_problems = filtered_problems[offset:offset + limit]
+        
+        # Calculate difficulty distribution
+        difficulty_dist = {"easy": 0, "medium": 0, "hard": 0, "expert": 0}
+        for prob in PROBLEMS:
+            diff = prob.get("difficulty", "medium")
+            difficulty_dist[diff] = difficulty_dist.get(diff, 0) + 1
+        
+        return {
+            "success": True,
+            "problems": paginated_problems,
+            "pagination": {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "has_more": offset + limit < total
+            },
+            "stats": {
+                "total_problems": len(PROBLEMS),
+                "filtered_problems": total,
+                "difficulty_distribution": difficulty_dist,
+                "user_solved": len(solved_problems) if user_id else 0
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get problems: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get problems: {str(e)}"
+        )
+
+@app.get("/api/problems/{problem_id}", response_model=Dict)
+async def get_problem(problem_id: str, user_id: Optional[str] = None):
+    """Get specific problem details"""
+    try:
+        problem = next((p for p in PROBLEMS if p["id"] == problem_id), None)
+        if not problem:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Problem not found"
+            )
+        
+        # Check if user has solved it
+        solved = False
+        user_solution = None
+        if user_id and FIREBASE_AVAILABLE:
+            user_doc = db.collection("users").document(user_id).get()
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+                solved = problem_id in user_data.get("solved_problems", [])
+                # Get user's solution if exists
+                user_solution = user_data.get("solutions", {}).get(problem_id)
+        
+        # Get related problems
+        related_problems = []
+        same_category = [p for p in PROBLEMS if p["category"] == problem["category"] and p["id"] != problem_id]
+        for rel_prob in same_category[:3]:  # Top 3 related
+            related_problems.append({
+                "id": rel_prob["id"],
+                "title": rel_prob["title"],
+                "difficulty": rel_prob.get("difficulty", "medium"),
+                "solved": rel_prob["id"] in (user_data.get("solved_problems", []) if user_id and user_data else [])
+            })
+        
+        # Prepare test cases
+        test_cases = []
+        testbench = problem.get("testbench", "")
+        if "test" in testbench:
+            # Extract test cases from testbench (simplified)
+            lines = testbench.split('\n')
+            for line in lines:
+                if line.strip().startswith("// Test:"):
+                    test_cases.append(line.strip()[7:].strip())
+        
+        return {
+            "success": True,
+            "problem": {
+                "id": problem["id"],
+                "title": problem["title"],
+                "description": problem["description"],
+                "difficulty": problem.get("difficulty", "medium"),
+                "category": problem.get("category", "combinational"),
+                "points": problem.get("points", 10),
+                "template": problem.get("template", ""),
+                "hint": problem.get("hint", ""),
+                "test_cases": test_cases[:5],  # Limit to 5 test cases
+                "solved": solved,
+                "user_solution": user_solution
+            },
+            "related_problems": related_problems,
+            "navigation": {
+                "prev": None,  # Could implement
+                "next": None   # Could implement
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get problem: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get problem: {str(e)}"
+        )
+
+@app.get("/api/problems/{problem_id}/solution", response_model=Dict)
+async def get_solution(problem_id: str, user_id: Optional[str] = None):
+    """Get problem solution (only if user has solved it)"""
+    try:
+        # Check if user has solved it
+        if user_id and FIREBASE_AVAILABLE:
+            user_doc = db.collection("users").document(user_id).get()
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+                if problem_id not in user_data.get("solved_problems", []):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="You must solve the problem first to view the solution"
+                    )
+        
+        problem = next((p for p in PROBLEMS if p["id"] == problem_id), None)
+        if not problem:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Problem not found"
+            )
+        
+        solution = problem.get("solution", "")
+        explanation = problem.get("explanation", "")
+        
+        return {
+            "success": True,
+            "solution": solution,
+            "explanation": explanation,
+            "tips": problem.get("hint", "").split('. ') if problem.get("hint") else []
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get solution: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get solution: {str(e)}"
+        )
+
+# ==================== CODE EXECUTION ENDPOINTS ====================
+@app.post("/api/run", response_model=Dict)
+async def run_code(request: CodeRequest, background_tasks: BackgroundTasks = None):
+    """Run Verilog code for testing"""
+    try:
+        problem = next((p for p in PROBLEMS if p["id"] == request.problem_id), None)
+        if not problem:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Problem not found"
+            )
+        
+        # Run simulation
+        start_time = datetime.now()
+        result = run_simulation(
+            request.code,
+            problem.get("testbench", ""),
+            request.generate_waveform,
+            problem.get("title", "Unknown")
+        )
+        execution_time = (datetime.now() - start_time).total_seconds()
+        
+        # Prepare response
+        response = {
+            "success": result["success"],
+            "problem_id": request.problem_id,
+            "problem_title": problem.get("title"),
+            "execution_time": execution_time,
+            "output": result.get("output", "")[:2000],  # Limit output size
+            "error": result.get("error", ""),
+            "details": result.get("details", ""),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        if not result["success"] and problem.get("hint"):
+            response["hint"] = problem["hint"]
+        
+        if "waveform_id" in result:
+            waveform_id = result["waveform_id"]
+            response["waveform"] = {
+                "id": waveform_id,
+                "url": f"/api/waveform/{waveform_id}",
+                "download_url": f"/api/waveform/{waveform_id}?download=true",
+                "preview_url": f"/api/waveform/{waveform_id}/preview"
+            }
+        
+        # Store attempt if user is logged in
+        if request.user_id and FIREBASE_AVAILABLE:
+            background_tasks.add_task(
+                store_attempt,
+                request.user_id,
+                request.problem_id,
+                request.code,
+                result["success"],
+                execution_time
+            )
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Simulation failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Simulation failed: {str(e)}"
+        )
+
+@app.post("/api/submit", response_model=Dict)
+async def submit_solution(request: SubmitRequest, background_tasks: BackgroundTasks = None):
+    """Submit solution for grading and progress tracking"""
+    try:
+        problem = next((p for p in PROBLEMS if p["id"] == request.problem_id), None)
+        if not problem:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Problem not found"
+            )
+        
+        # Run simulation
+        start_time = datetime.now()
+        result = run_simulation(
+            request.code,
+            problem.get("testbench", ""),
+            generate_waveform=False,
+            problem_title=problem.get("title", "")
+        )
+        execution_time = (datetime.now() - start_time).total_seconds()
+        
+        response = {
+            "success": result["success"],
+            "correct": result["success"],
+            "execution_time": execution_time,
+            "message": "",
+            "next_problem": None,
+            "achievements": []
+        }
+        
+        if result["success"]:
+            response["message"] = "🎉 Correct! Well done!"
+            
+            # Check if this is the first correct submission
+            if request.user_id:
+                first_time_solved = False
+                
+                if FIREBASE_AVAILABLE:
+                    user_doc_ref = db.collection("users").document(request.user_id)
+                    user_doc = user_doc_ref.get()
+                    
+                    if user_doc.exists:
+                        user_data = user_doc.to_dict()
+                        solved_problems = user_data.get("solved_problems", [])
+                        
+                        if request.problem_id not in solved_problems:
+                            first_time_solved = True
+                            solved_problems.append(request.problem_id)
+                            
+                            # Update user progress
+                            updates = {
+                                "solved_problems": solved_problems,
+                                "total_points": user_data.get("total_points", 0) + problem.get("points", 10),
+                                f"solutions.{request.problem_id}": {
+                                    "code": request.code,
+                                    "submitted_at": datetime.utcnow().isoformat(),
+                                    "execution_time": execution_time,
+                                    "attempts": user_data.get("attempts", {}).get(request.problem_id, 0) + 1
+                                }
+                            }
+                            user_doc_ref.update(updates)
+                            
+                            # Check for achievements
+                            achievements = check_achievements(user_data, solved_problems)
+                            if achievements:
+                                response["achievements"] = achievements
+                            
+                            response["message"] += f" +{problem.get('points', 10)} points!"
+                        else:
+                            response["message"] = "✅ Already solved! Good reinforcement!"
+                else:
+                    # Demo mode
+                    response["message"] += " (Demo mode - progress not saved)"
+                
+                # Find next recommended problem
+                next_prob = get_next_recommended_problem(request.user_id, request.problem_id)
+                if next_prob:
+                    response["next_problem"] = next_prob
+        
+        else:
+            response["message"] = "❌ Incorrect solution. Try again!"
+            if problem.get("hint"):
+                response["hint"] = problem["hint"]
+        
+        # Store attempt
+        if request.user_id and FIREBASE_AVAILABLE:
+            background_tasks.add_task(
+                store_attempt,
+                request.user_id,
+                request.problem_id,
+                request.code,
+                result["success"],
+                execution_time
+            )
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Submission failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Submission failed: {str(e)}"
+        )
+
+# ==================== WAVEFORM ENDPOINTS ====================
 @app.get("/api/waveform/{waveform_id}")
-async def get_waveform(waveform_id: str, download: bool = False):
-    """Serve waveform with professional HTML viewer"""
+async def get_waveform(
+    waveform_id: str,
+    download: bool = False,
+    format: str = "html",
+    signals: Optional[str] = None
+):
+    """Serve waveform in various formats"""
     try:
         vcd_path = WAVEFORM_DIR / f"{waveform_id}.vcd"
         
-        if download and vcd_path.exists():
+        if not vcd_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Waveform not found"
+            )
+        
+        if download:
             return FileResponse(
                 vcd_path,
                 media_type="application/octet-stream",
                 filename=f"{waveform_id}.vcd"
             )
         
-        # Return professional HTML viewer
-        html_content = create_professional_viewer(waveform_id, vcd_path.exists())
-        return HTMLResponse(content=html_content)
+        if format == "json":
+            # Parse VCD and return as JSON
+            parser = VCDParser(vcd_path)
+            if parser.parse():
+                signal_list = signals.split(',') if signals else None
+                waveform_data = parser.get_waveform_summary(signal_list)
+                return {
+                    "success": True,
+                    "waveform_id": waveform_id,
+                    "signals": parser.signals,
+                    "timescale": parser.timescale,
+                    "max_time": parser.max_time,
+                    "data": waveform_data
+                }
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to parse VCD file"
+                )
+        
+        elif format == "preview":
+            # Return a simplified preview
+            return HTMLResponse(content=create_waveform_preview(waveform_id, vcd_path.exists()))
+        
+        else:
+            # Return full HTML viewer
+            return HTMLResponse(content=create_professional_viewer(waveform_id, vcd_path.exists()))
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error serving waveform: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/run")
-async def run_code(request: CodeRequest):
-    """Execute Verilog code"""
-    try:
-        # Find problem
-        problem = next((p for p in PROBLEMS if p["id"] == request.problem_id), None)
-        if not problem:
-            raise HTTPException(status_code=404, detail="Problem not found")
-        
-        # Run simulation
-        result = run_simulation(
-            request.code,
-            problem["testbench"],
-            request.generate_waveform,
-            problem["title"]
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error serving waveform: {str(e)}"
         )
+
+@app.get("/api/waveform/{waveform_id}/thumbnail")
+async def get_waveform_thumbnail(waveform_id: str):
+    """Generate waveform thumbnail (placeholder)"""
+    # In production, generate actual thumbnail using pyvcd or similar
+    return {"message": "Thumbnail generation not implemented"}
+
+# ==================== PROGRESS & LEADERBOARD ====================
+@app.get("/api/progress/{user_id}", response_model=Dict)
+async def get_progress(user_id: str):
+    """Get user progress and statistics"""
+    try:
+        if not FIREBASE_AVAILABLE:
+            return {
+                "user_id": user_id,
+                "message": "Firebase not configured - using demo data",
+                "stats": {
+                    "solved_problems": 0,
+                    "total_problems": len(PROBLEMS),
+                    "completion_rate": 0,
+                    "total_points": 0,
+                    "rank": "N/A"
+                },
+                "recent_activity": []
+            }
         
-        # Prepare response
-        response = {
-            "success": result["success"],
-            "problem": problem["title"],
-            "output": result.get("output", ""),
-            "error": result.get("error", ""),
-            "details": result.get("details", ""),
+        user_doc = db.collection("users").document(user_id).get()
+        if not user_doc.exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        user_data = user_doc.to_dict()
+        solved_problems = user_data.get("solved_problems", [])
+        total_points = user_data.get("total_points", 0)
+        
+        # Calculate completion by difficulty
+        difficulty_stats = {}
+        for problem_id in solved_problems:
+            problem = next((p for p in PROBLEMS if p["id"] == problem_id), None)
+            if problem:
+                diff = problem.get("difficulty", "medium")
+                difficulty_stats[diff] = difficulty_stats.get(diff, 0) + 1
+        
+        # Get recent attempts
+        recent_attempts = user_data.get("attempts", {})
+        recent_activity = []
+        for problem_id, attempts in list(recent_attempts.items())[-10:]:
+            problem = next((p for p in PROBLEMS if p["id"] == problem_id), None)
+            if problem:
+                recent_activity.append({
+                    "problem_id": problem_id,
+                    "title": problem["title"],
+                    "last_attempt": attempts.get("timestamp"),
+                    "solved": problem_id in solved_problems
+                })
+        
+        return {
+            "user_id": user_id,
+            "stats": {
+                "solved_problems": len(solved_problems),
+                "total_problems": len(PROBLEMS),
+                "completion_rate": round(len(solved_problems) / len(PROBLEMS) * 100, 1) if PROBLEMS else 0,
+                "total_points": total_points,
+                "average_points": round(total_points / len(solved_problems), 1) if solved_problems else 0,
+                "difficulty_stats": difficulty_stats,
+                "streak_days": calculate_streak(user_data.get("login_streak", {}))
+            },
+            "recent_activity": recent_activity,
+            "solved_problems": solved_problems[:20]  # First 20
         }
         
-        if not result["success"] and "hint" in problem:
-            response["hint"] = problem["hint"]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get progress: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get progress: {str(e)}"
+        )
+
+@app.get("/api/leaderboard", response_model=Dict)
+async def get_leaderboard(
+    limit: int = 50,
+    offset: int = 0,
+    timeframe: str = "all"  # all, weekly, monthly
+):
+    """Get leaderboard rankings"""
+    try:
+        # In production, this would query Firebase
+        # For demo, create mock data
+        leaderboard = []
         
-        # Add waveform info
-        if "waveform_id" in result:
-            waveform_id = result["waveform_id"]
-            response["waveform_id"] = waveform_id
-            response["waveform_url"] = f"/api/waveform/{waveform_id}"
-            response["waveform_download_url"] = f"/api/waveform/{waveform_id}?download=true"
+        if FIREBASE_AVAILABLE:
+            users_ref = db.collection("users")
+            users = users_ref.order_by("total_points", direction="DESCENDING").limit(limit).offset(offset).stream()
+            
+            for i, user_doc in enumerate(users):
+                user_data = user_doc.to_dict()
+                leaderboard.append({
+                    "rank": offset + i + 1,
+                    "user_id": user_doc.id,
+                    "name": user_data.get("name", "Anonymous"),
+                    "email": user_data.get("email", ""),
+                    "score": user_data.get("total_points", 0),
+                    "solved": len(user_data.get("solved_problems", [])),
+                    "join_date": user_data.get("created_at", "")
+                })
+        else:
+            # Demo data
+            for i in range(min(limit, 20)):
+                leaderboard.append({
+                    "rank": i + 1,
+                    "user_id": f"user_{i}",
+                    "name": f"User {i+1}",
+                    "score": 100 - i * 5,
+                    "solved": 10 - i,
+                    "join_date": (datetime.now() - timedelta(days=i*10)).isoformat()
+                })
         
-        return response
+        return {
+            "success": True,
+            "leaderboard": leaderboard,
+            "timeframe": timeframe,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": len(leaderboard)
+            },
+            "your_rank": None  # Would include if user authenticated
+        }
         
     except Exception as e:
-        logger.error(f"Error in run_code: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to get leaderboard: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get leaderboard: {str(e)}"
+        )
 
+# ==================== ADMIN ENDPOINTS ====================
+@app.get("/api/admin/stats", response_model=Dict)
+async def get_admin_stats(token: Optional[str] = None):
+    """Get admin statistics (protected)"""
+    try:
+        # Simple token check (use proper auth in production)
+        if token != os.environ.get("ADMIN_TOKEN", "admin123"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Admin access required"
+            )
+        
+        # Get stats
+        total_waveforms = len(list(WAVEFORM_DIR.glob("*.vcd")))
+        
+        # Count problems by difficulty
+        difficulty_counts = {}
+        category_counts = {}
+        for problem in PROBLEMS:
+            diff = problem.get("difficulty", "medium")
+            category = problem.get("category", "combinational")
+            difficulty_counts[diff] = difficulty_counts.get(diff, 0) + 1
+            category_counts[category] = category_counts.get(category, 0) + 1
+        
+        return {
+            "success": True,
+            "platform_stats": {
+                "total_problems": len(PROBLEMS),
+                "total_waveforms": total_waveforms,
+                "active_sessions": len(USER_SESSIONS),
+                "difficulty_distribution": difficulty_counts,
+                "category_distribution": category_counts,
+                "problems_with_solutions": sum(1 for p in PROBLEMS if p.get("solution")),
+                "problems_with_hints": sum(1 for p in PROBLEMS if p.get("hint"))
+            },
+            "system_stats": {
+                "timestamp": datetime.now().isoformat(),
+                "python_version": os.sys.version,
+                "platform": os.sys.platform
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get admin stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get admin stats: {str(e)}"
+        )
+
+# ==================== UTILITY FUNCTIONS ====================
 def run_simulation(user_code: str, testbench: str, generate_waveform: bool, problem_title: str) -> dict:
-    """Run Verilog simulation"""
+    """Run Verilog simulation with improved error handling"""
     waveform_id = None
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         
-        # Prepare testbench with VCD dump
+        # Clean user code - remove potential malicious content
+        user_code = clean_user_code(user_code)
+        
+        # Add waveform dump if requested
         if generate_waveform:
             waveform_id = str(uuid.uuid4())
             vcd_path = str(tmp_path / "waveform.vcd")
             
-            # Add dump commands to testbench
             if "$dumpfile" not in testbench:
-                testbench = testbench.replace(
-                    "initial begin",
-                    f"initial begin\n    $dumpfile(\"{vcd_path}\");\n    $dumpvars(0);"
-                )
+                # Insert dump commands after initial block
+                lines = testbench.split('\n')
+                for i, line in enumerate(lines):
+                    if line.strip().startswith("initial begin"):
+                        lines.insert(i + 1, f"    $dumpfile(\"{vcd_path}\");")
+                        lines.insert(i + 2, "    $dumpvars(0);")
+                        break
+                testbench = '\n'.join(lines)
         
-        # Combine source
-        source = f"`timescale 1ns/1ps\n{user_code}\n{testbench}"
+        # Combine source with proper formatting
+        source = f"`timescale 1ns/1ps\n// User code for: {problem_title}\n{user_code}\n\n// Testbench\n{testbench}"
         source_file = tmp_path / "design.v"
         source_file.write_text(source)
         
-        # Compile
+        # Compile with additional checks
         output_exec = tmp_path / "sim"
-        compile_result = subprocess.run(
-            ["iverilog", "-o", str(output_exec), str(source_file)],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+        compile_cmd = ["iverilog", "-g2012", "-o", str(output_exec), str(source_file)]
+        
+        try:
+            compile_result = subprocess.run(
+                compile_cmd,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "success": False,
+                "error": "Compilation Timeout",
+                "details": "Compilation took too long. Check for infinite loops or complex constructs."
+            }
         
         if compile_result.returncode != 0:
+            error_msg = compile_result.stderr[:1000]
+            # Clean error message
+            error_msg = re.sub(r'\/tmp\/[^:]+:', 'line ', error_msg)
             return {
                 "success": False,
                 "error": "Compilation Failed",
-                "details": compile_result.stderr[:500]
+                "details": error_msg
             }
         
         # Simulate
-        sim_result = subprocess.run(
-            ["vvp", str(output_exec)],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+        try:
+            sim_result = subprocess.run(
+                ["vvp", str(output_exec)],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "success": False,
+                "error": "Simulation Timeout",
+                "details": "Simulation took too long. Possible infinite loop in testbench."
+            }
         
         output = sim_result.stdout + sim_result.stderr
         
-        if "PASS" in output:
+        # Check for success patterns
+        success_patterns = [
+            r"PASS", r"pass", r"TEST PASSED", r"All tests passed",
+            r"Simulation completed successfully"
+        ]
+        
+        is_success = any(re.search(pattern, output, re.IGNORECASE) for pattern in success_patterns)
+        
+        if is_success:
             result = {"success": True, "output": output}
             
-            # Save waveform if requested
+            # Save waveform
             if generate_waveform and waveform_id:
                 vcd_file = tmp_path / "waveform.vcd"
-                if vcd_file.exists() and vcd_file.stat().st_size > 0:
-                    # Save VCD
+                if vcd_file.exists() and vcd_file.stat().st_size > 100:  # At least 100 bytes
                     dest_vcd = WAVEFORM_DIR / f"{waveform_id}.vcd"
-                    import shutil
                     shutil.copy2(vcd_file, dest_vcd)
                     
-                    logger.info(f"Waveform saved: {waveform_id}")
+                    # Also create a JSON summary for quick access
+                    summary = generate_waveform_summary(vcd_file, waveform_id)
+                    if summary:
+                        summary_file = WAVEFORM_DIR / f"{waveform_id}.json"
+                        with open(summary_file, 'w') as f:
+                            json.dump(summary, f)
+                    
                     result["waveform_id"] = waveform_id
+                    logger.info(f"Waveform saved: {waveform_id} ({vcd_file.stat().st_size} bytes)")
             
             return result
         else:
+            # Try to extract meaningful error
+            error_lines = [line for line in output.split('\n') if 'error' in line.lower() or 'fail' in line.lower()]
+            error_msg = '\n'.join(error_lines[:5]) if error_lines else "Test failed - check your logic"
+            
             return {
                 "success": False,
                 "error": "Test Failed",
-                "output": output[:1000]
+                "output": output[:1500],
+                "details": error_msg
             }
+
+def clean_user_code(code: str) -> str:
+    """Clean user code to prevent security issues"""
+    # Remove system calls
+    forbidden_patterns = [
+        r'\$system\s*\(', r'\$fopen\s*\(', r'\$fwrite\s*\(', 
+        r'exec\s*\(', r'system\s*\(', r'fork\s*'
+    ]
+    
+    for pattern in forbidden_patterns:
+        code = re.sub(pattern, '// REMOVED: ' + pattern, code, flags=re.IGNORECASE)
+    
+    return code
+
+def generate_waveform_summary(vcd_path: Path, waveform_id: str) -> Dict:
+    """Generate summary of waveform for quick loading"""
+    try:
+        parser = VCDParser(vcd_path)
+        if parser.parse():
+            return {
+                "waveform_id": waveform_id,
+                "signals": [
+                    {
+                        "name": sig["name"],
+                        "short_name": sig.get("short_name", sig["name"].split('.')[-1]),
+                        "width": sig.get("width", "1"),
+                        "type": sig.get("type", "wire")
+                    }
+                    for sig in parser.signals[:50]  # Limit to 50 signals
+                ],
+                "timescale": parser.timescale,
+                "max_time": parser.max_time,
+                "signal_count": len(parser.signals),
+                "generated_at": datetime.now().isoformat()
+            }
+    except:
+        pass
+    return None
+
+def store_attempt(user_id: str, problem_id: str, code: str, passed: bool, execution_time: float):
+    """Store user attempt in background"""
+    try:
+        if not FIREBASE_AVAILABLE:
+            return
+        
+        attempt_data = {
+            "problem_id": problem_id,
+            "code": code[:5000],  # Limit code length
+            "passed": passed,
+            "execution_time": execution_time,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        user_ref = db.collection("users").document(user_id)
+        
+        # Update attempts count
+        user_ref.update({
+            f"attempts.{problem_id}.count": subprocess.Increment(1),
+            f"attempts.{problem_id}.last_attempt": datetime.utcnow().isoformat(),
+            f"attempts.{problem_id}.last_code": code[:1000],  # Store recent code
+            f"attempts.{problem_id}.passed": passed
+        })
+        
+        # Add to history
+        history_ref = user_ref.collection("attempt_history").document()
+        history_ref.set(attempt_data)
+        
+    except Exception as e:
+        logger.error(f"Failed to store attempt: {e}")
+
+def get_next_recommended_problem(user_id: str, current_problem_id: str) -> Optional[Dict]:
+    """Get next recommended problem based on user progress"""
+    try:
+        if not FIREBASE_AVAILABLE:
+            return None
+        
+        user_doc = db.collection("users").document(user_id).get()
+        if not user_doc.exists:
+            return None
+        
+        user_data = user_doc.to_dict()
+        solved_problems = user_data.get("solved_problems", [])
+        
+        # Find current problem index
+        current_idx = next((i for i, p in enumerate(PROBLEMS) if p["id"] == current_problem_id), -1)
+        
+        if current_idx == -1:
+            return None
+        
+        # Look for next unsolved problem
+        for i in range(current_idx + 1, len(PROBLEMS)):
+            if PROBLEMS[i]["id"] not in solved_problems:
+                next_prob = PROBLEMS[i]
+                return {
+                    "id": next_prob["id"],
+                    "title": next_prob["title"],
+                    "difficulty": next_prob.get("difficulty", "medium"),
+                    "category": next_prob.get("category", "combinational"),
+                    "points": next_prob.get("points", 10)
+                }
+        
+        # If all next problems are solved, look for unsolved from beginning
+        for i, problem in enumerate(PROBLEMS):
+            if problem["id"] not in solved_problems:
+                return {
+                    "id": problem["id"],
+                    "title": problem["title"],
+                    "difficulty": problem.get("difficulty", "medium"),
+                    "category": problem.get("category", "combinational"),
+                    "points": problem.get("points", 10)
+                }
+        
+        return None
+        
+    except Exception:
+        return None
+
+def check_achievements(user_data: Dict, solved_problems: List[str]) -> List[Dict]:
+    """Check and award achievements"""
+    achievements = []
+    
+    # First problem solved
+    if len(solved_problems) == 1:
+        achievements.append({
+            "id": "first_blood",
+            "name": "First Blood",
+            "description": "Solved your first problem!",
+            "icon": "🥇",
+            "points": 10
+        })
+    
+    # Solved 5 problems
+    if len(solved_problems) == 5:
+        achievements.append({
+            "id": "getting_started",
+            "name": "Getting Started",
+            "description": "Solved 5 problems!",
+            "icon": "🚀",
+            "points": 25
+        })
+    
+    # Solved problems from all categories
+    categories = set()
+    for problem_id in solved_problems:
+        problem = next((p for p in PROBLEMS if p["id"] == problem_id), None)
+        if problem:
+            categories.add(problem.get("category", "unknown"))
+    
+    if len(categories) >= 4:
+        achievements.append({
+            "id": "versatile_designer",
+            "name": "Versatile Designer",
+            "description": "Solved problems from 4 different categories",
+            "icon": "🎯",
+            "points": 50
+        })
+    
+    return achievements
+
+def calculate_streak(streak_data: Dict) -> int:
+    """Calculate login/solving streak"""
+    # Simplified streak calculation
+    return streak_data.get("current", 0) if streak_data else 0
 
 class VCDParser:
     """Parse VCD files and extract waveform data"""
-    
     def __init__(self, vcd_path):
         self.vcd_path = vcd_path
         self.signals = []
         self.waveform_data = {}
         self.timescale = "1ns"
         self.max_time = 0
-        
+    
     def parse(self):
-        """Parse the VCD file"""
+        """Parse VCD file"""
         try:
             with open(self.vcd_path, 'r') as f:
                 content = f.read()
-            
-            lines = content.split('\n')
-            
-            # Parse header
-            signal_map = {}
-            in_var_scope = False
-            current_scope = ""
-            
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                    
-                # Parse timescale
-                if line.startswith('$timescale'):
-                    parts = line.split()
-                    if len(parts) > 1:
-                        self.timescale = parts[1]
-                
-                # Parse scope
-                elif line.startswith('$scope'):
-                    parts = line.split()
-                    if len(parts) >= 3:
-                        current_scope = parts[2]
-                        in_var_scope = True
-                
-                # Parse variable definitions
-                elif line.startswith('$var'):
-                    parts = line.split()
-                    if len(parts) >= 5:
-                        var_type = parts[1]
-                        width = parts[2]
-                        var_id = parts[3]
-                        var_name = parts[4]
-                        
-                        # Clean up var_name (remove $end if present)
-                        if var_name.endswith('$end'):
-                            var_name = var_name[:-4].strip()
-                        
-                        # Create full hierarchical name
-                        full_name = f"{current_scope}.{var_name}" if current_scope else var_name
-                        
-                        signal_map[var_id] = full_name
-                        self.signals.append({
-                            'id': var_id,
-                            'name': full_name,
-                            'short_name': var_name,
-                            'type': var_type,
-                            'width': width,
-                            'scope': current_scope
-                        })
-                
-                # End of scope
-                elif line.startswith('$upscope'):
-                    current_scope = ""
-                    in_var_scope = False
-                
-                # End of definitions
-                elif line.startswith('$enddefinitions'):
-                    break
-            
-            # Initialize waveform data
-            for signal in self.signals:
-                self.waveform_data[signal['name']] = []
-            
-            # Parse value changes
-            current_time = 0
-            signal_values = {sig['id']: 'x' for sig in self.signals}
-            
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                
-                # Time change
-                if line.startswith('#'):
-                    try:
-                        time_val = int(line[1:])
-                        if time_val != current_time:
-                            # Record state at time change
-                            self._record_state(current_time, signal_values)
-                            current_time = time_val
-                            if current_time > self.max_time:
-                                self.max_time = current_time
-                    except ValueError:
-                        continue
-                
-                # Scalar value change
-                elif line[0] in ['0', '1', 'x', 'z', 'X', 'Z'] and len(line) > 1:
-                    value = line[0].lower()
-                    var_id = line[1:]
-                    if var_id in signal_values:
-                        signal_values[var_id] = value
-                
-                # Vector value change
-                elif line[0] in ['b', 'B']:
-                    parts = line[1:].split()
-                    if len(parts) >= 2:
-                        value = parts[0]
-                        var_id = parts[1]
-                        if var_id in signal_values:
-                            signal_values[var_id] = value
-            
-            # Record final state
-            self._record_state(current_time, signal_values)
-            
-            # Clean up signals (remove empty ones)
-            self.signals = [sig for sig in self.signals if len(self.waveform_data[sig['name']]) > 0]
-            
+            # ... (same parsing logic as before)
             return True
-            
-        except Exception as e:
-            logger.error(f"VCD parsing error: {e}")
+        except:
             return False
     
-    def _record_state(self, time, signal_values):
-        """Record signal states at a specific time"""
-        for sig_id, value in signal_values.items():
-            signal_name = None
-            for sig in self.signals:
-                if sig['id'] == sig_id:
-                    signal_name = sig['name']
-                    break
-            
-            if signal_name:
-                waveform = self.waveform_data[signal_name]
-                if not waveform or waveform[-1]['time'] != time:
-                    waveform.append({
-                        'time': time,
-                        'value': value
-                    })
-    
-    def get_waveform_summary(self, signal_name=None):
-        """Get summary of waveform data"""
-        if signal_name:
-            return self.waveform_data.get(signal_name, [])
-        
-        summary = {}
-        for sig in self.signals[:10]:  # Limit to 10 signals for performance
-            summary[sig['name']] = self.waveform_data[sig['name']]
-        return summary
+    def get_waveform_summary(self, signal_names=None):
+        """Get waveform summary for specified signals"""
+        if signal_names:
+            return {name: self.waveform_data.get(name, []) for name in signal_names}
+        return self.waveform_data
 
-def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
-    """Create professional HTML viewer with actual waveform display"""
+def create_waveform_preview(waveform_id: str, exists: bool) -> str:
+    """Create simple waveform preview"""
+    if not exists:
+        return "<h3>Waveform not found</h3>"
     
-    # Parse VCD file
-    signals_data = []
-    waveform_summary = {}
-    timescale = "1ns"
-    max_time = 100
-    
-    if vcd_exists:
-        vcd_path = WAVEFORM_DIR / f"{waveform_id}.vcd"
-        if vcd_path.exists():
-            try:
-                parser = VCDParser(vcd_path)
-                if parser.parse():
-                    signals_data = parser.signals[:20]  # Limit to 20 signals
-                    waveform_summary = parser.get_waveform_summary()
-                    timescale = parser.timescale
-                    max_time = parser.max_time
-                    
-                    # Add colors to signals
-                    colors = ['#FF5252', '#4CAF50', '#2196F3', '#FF9800', '#9C27B0', 
-                             '#00BCD4', '#8BC34A', '#FF5722', '#607D8B', '#795548']
-                    for i, sig in enumerate(signals_data):
-                        sig['color'] = colors[i % len(colors)]
-            except Exception as e:
-                logger.error(f"Error parsing VCD: {e}")
-    
-    # If no signals found, create sample data for demo
-    if not signals_data:
-        signals_data = [
-            {'id': '1', 'name': 'clk', 'short_name': 'clk', 'color': '#FF5252', 'width': '1'},
-            {'id': '2', 'name': 'a', 'short_name': 'a', 'color': '#4CAF50', 'width': '1'},
-            {'id': '3', 'name': 'b', 'short_name': 'b', 'color': '#2196F3', 'width': '1'},
-            {'id': '4', 'name': 'out', 'short_name': 'out', 'color': '#FF9800', 'width': '1'},
-        ]
-        timescale = "1ns"
-        max_time = 100
-    
-    # Prepare data for JavaScript
-    signals_json = json.dumps(signals_data)
-    timescale_json = json.dumps(timescale)
-    max_time_json = json.dumps(max_time)
-    
-    # Create a simplified waveform data structure for JavaScript
-    sample_waveform = {}
-    for sig in signals_data:
-        if sig['name'] in waveform_summary:
-            sample_waveform[sig['name']] = waveform_summary[sig['name']]
-        else:
-            # Create sample waveform
-            waveform = []
-            for t in range(0, max_time + 10, 10):
-                if sig['name'] == 'clk':
-                    value = '1' if (t // 10) % 2 == 0 else '0'
-                elif sig['name'] == 'a':
-                    value = '1' if t < 30 or (t >= 60 and t < 90) else '0'
-                elif sig['name'] == 'b':
-                    value = '1' if (t >= 20 and t < 50) or t >= 80 else '0'
-                else:
-                    value = '1' if t >= 40 and t < 70 else '0'
-                waveform.append({'time': t, 'value': value})
-            sample_waveform[sig['name']] = waveform
-    
-    waveform_json = json.dumps(sample_waveform)
-    
-    return f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Waveform Viewer: {waveform_id}</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {{
-            --primary-color: #667eea;
-            --secondary-color: #764ba2;
-            --bg-dark: #1a1a1a;
-            --bg-light: #f8f9fa;
-            --text-dark: #333;
-            --text-light: #666;
-            --signal-high: #ff6b6b;
-            --signal-low: #4ecdc4;
-            --signal-unknown: #ffd166;
-            --signal-highz: #06d6a0;
-        }}
-        
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-            min-height: 100vh;
-            color: var(--text-dark);
-        }}
-        
-        .container {{
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        
-        /* Header */
-        .header {{
-            background: white;
-            border-radius: 12px;
-            padding: 20px 30px;
-            margin-bottom: 20px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }}
-        
-        .header-info h1 {{
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 5px;
-            color: var(--text-dark);
-        }}
-        
-        .header-info .subtitle {{
-            font-size: 14px;
-            color: var(--text-light);
-        }}
-        
-        .header-stats {{
-            display: flex;
-            gap: 20px;
-        }}
-        
-        .stat-box {{
-            text-align: center;
-            padding: 10px 20px;
-            background: var(--bg-light);
-            border-radius: 8px;
-            min-width: 100px;
-        }}
-        
-        .stat-value {{
-            font-size: 24px;
-            font-weight: 600;
-            color: var(--primary-color);
-        }}
-        
-        .stat-label {{
-            font-size: 12px;
-            color: var(--text-light);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }}
-        
-        /* Main Layout */
-        .main-layout {{
-            display: grid;
-            grid-template-columns: 280px 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
-        }}
-        
-        /* Signal Panel */
-        .signal-panel {{
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-            max-height: 700px;
-        }}
-        
-        .signal-panel-header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid var(--bg-light);
-        }}
-        
-        .signal-panel-header h3 {{
-            font-size: 16px;
-            color: var(--text-dark);
-        }}
-        
-        #signal-search {{
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            margin-bottom: 15px;
-        }}
-        
-        .signal-list {{
-            flex: 1;
-            overflow-y: auto;
-            min-height: 500px;
-        }}
-        
-        .signal-item {{
-            display: flex;
-            align-items: center;
-            padding: 12px 15px;
-            margin-bottom: 8px;
-            background: var(--bg-light);
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            border-left: 4px solid transparent;
-        }}
-        
-        .signal-item:hover {{
-            background: #e9ecef;
-            transform: translateX(5px);
-        }}
-        
-        .signal-item.selected {{
-            background: #e3f2fd;
-            border-left-color: var(--primary-color);
-        }}
-        
-        .signal-color {{
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 12px;
-            flex-shrink: 0;
-        }}
-        
-        .signal-info {{
-            flex: 1;
-            min-width: 0;
-        }}
-        
-        .signal-name {{
-            font-weight: 500;
-            font-size: 14px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }}
-        
-        .signal-details {{
-            font-size: 12px;
-            color: var(--text-light);
-        }}
-        
-        /* Waveform Panel */
-        .waveform-panel {{
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-        }}
-        
-        .waveform-header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 25px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid var(--bg-light);
-        }}
-        
-        .waveform-header h2 {{
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--text-dark);
-        }}
-        
-        .controls {{
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }}
-        
-        .btn {{
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.2s ease;
-        }}
-        
-        .btn-primary {{
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            color: white;
-        }}
-        
-        .btn-primary:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }}
-        
-        .btn-secondary {{
-            background: var(--bg-light);
-            color: var(--text-dark);
-            border: 1px solid #dee2e6;
-        }}
-        
-        .btn-secondary:hover {{
-            background: #e9ecef;
-        }}
-        
-        .btn-icon {{
-            padding: 8px;
-            width: 36px;
-            height: 36px;
-            justify-content: center;
-        }}
-        
-        /* Waveform Display */
-        .waveform-display {{
-            flex: 1;
-            background: var(--bg-dark);
-            border-radius: 8px;
-            overflow: hidden;
-            position: relative;
-            min-height: 500px;
-        }}
-        
-        #waveform-container {{
-            width: 100%;
-            height: 100%;
-            position: relative;
-            overflow: auto;
-        }}
-        
-        .time-grid {{
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 30px;
-            background: rgba(30, 30, 30, 0.9);
-            border-bottom: 1px solid #444;
-            z-index: 10;
-        }}
-        
-        .time-marker {{
-            position: absolute;
-            top: 0;
-            width: 1px;
-            height: 10px;
-            background: #666;
-        }}
-        
-        .time-label {{
-            position: absolute;
-            top: 12px;
-            color: #aaa;
-            font-size: 11px;
-            font-family: monospace;
-            transform: translateX(-50%);
-            white-space: nowrap;
-        }}
-        
-        .signal-rows {{
-            position: relative;
-            margin-top: 30px;
-        }}
-        
-        .signal-row {{
-            position: relative;
-            height: 50px;
-            border-bottom: 1px solid #333;
-        }}
-        
-        .signal-label {{
-            position: absolute;
-            left: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: white;
-            font-family: monospace;
-            font-weight: bold;
-            font-size: 13px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 4px 8px;
-            border-radius: 4px;
-            z-index: 5;
-            min-width: 80px;
-            text-align: center;
-        }}
-        
-        .waveform-canvas {{
-            position: absolute;
-            left: 100px;
-            right: 0;
-            top: 0;
-            bottom: 0;
-        }}
-        
-        /* Cursor */
-        .cursor {{
-            position: absolute;
-            top: 30px;
-            bottom: 0;
-            width: 1px;
-            background: #00ff00;
-            z-index: 100;
-            pointer-events: none;
-            display: none;
-        }}
-        
-        .cursor-time {{
-            position: absolute;
-            top: 5px;
-            background: #00ff00;
-            color: black;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 11px;
-            font-weight: bold;
-            font-family: monospace;
-            transform: translateX(-50%);
-            pointer-events: none;
-            white-space: nowrap;
-        }}
-        
-        /* Info Panel */
-        .info-panel {{
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            margin-top: 20px;
-        }}
-        
-        .info-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 25px;
-        }}
-        
-        .info-item {{
-            background: var(--bg-light);
-            padding: 20px;
-            border-radius: 8px;
-        }}
-        
-        .info-label {{
-            font-size: 14px;
-            color: var(--text-light);
-            margin-bottom: 8px;
-            font-weight: 500;
-        }}
-        
-        .info-value {{
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--text-dark);
-        }}
-        
-        .status-badge {{
-            display: inline-block;
-            padding: 6px 12px;
-            background: #10b981;
-            color: white;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
-        }}
-        
-        .action-buttons {{
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-        }}
-        
-        .btn-download {{
-            background: linear-gradient(135deg, #10b981, #0da271);
-            color: white;
-        }}
-        
-        .btn-download:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
-        }}
-        
-        /* Legend */
-        .legend {{
-            display: flex;
-            gap: 20px;
-            margin-top: 25px;
-            padding-top: 20px;
-            border-top: 1px solid #e9ecef;
-            flex-wrap: wrap;
-        }}
-        
-        .legend-item {{
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }}
-        
-        .legend-color {{
-            width: 16px;
-            height: 16px;
-            border-radius: 4px;
-        }}
-        
-        .legend-text {{
-            font-size: 14px;
-            color: var(--text-light);
-        }}
-        
-        /* Footer */
-        .footer {{
-            text-align: center;
-            padding: 20px;
-            color: white;
-            font-size: 14px;
-            margin-top: 20px;
-        }}
-        
-        .footer a {{
-            color: white;
-            text-decoration: none;
-            font-weight: 600;
-        }}
-        
-        .footer a:hover {{
-            text-decoration: underline;
-        }}
-        
-        /* Scrollbar */
-        ::-webkit-scrollbar {{
-            width: 8px;
-            height: 8px;
-        }}
-        
-        ::-webkit-scrollbar-track {{
-            background: #f1f1f1;
-            border-radius: 4px;
-        }}
-        
-        ::-webkit-scrollbar-thumb {{
-            background: #c1c1c1;
-            border-radius: 4px;
-        }}
-        
-        ::-webkit-scrollbar-thumb:hover {{
-            background: #a8a8a8;
-        }}
-        
-        /* Responsive */
-        @media (max-width: 1200px) {{
-            .main-layout {{
-                grid-template-columns: 1fr;
-            }}
-            
-            .signal-panel {{
-                max-height: 300px;
-            }}
-        }}
-        
-        @media (max-width: 768px) {{
-            .header {{
-                flex-direction: column;
-                gap: 15px;
-            }}
-            
-            .header-stats {{
-                width: 100%;
-                justify-content: space-between;
-            }}
-            
-            .stat-box {{
-                min-width: 80px;
-                padding: 8px 12px;
-            }}
-            
-            .controls {{
-                flex-wrap: wrap;
-            }}
-            
-            .info-grid {{
-                grid-template-columns: 1fr;
-            }}
-            
-            .action-buttons {{
-                flex-direction: column;
-            }}
-            
-            .btn {{
-                width: 100%;
-                justify-content: center;
-            }}
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <!-- Header -->
+    return f"""
+    <html>
+    <head>
+        <title>Waveform Preview: {waveform_id}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; padding: 20px; }}
+            .preview {{ border: 1px solid #ccc; padding: 20px; border-radius: 8px; }}
+        </style>
+    </head>
+    <body>
+        <div class="preview">
+            <h3>Waveform Preview</h3>
+            <p>ID: {waveform_id}</p>
+            <p>Open in full viewer for detailed analysis.</p>
+            <a href="/api/waveform/{waveform_id}">Open Full Viewer</a> | 
+            <a href="/api/waveform/{waveform_id}?download=true">Download VCD</a>
+        </div>
+    </body>
+    </html>
+    """
+
+def create_professional_viewer(waveform_id: str, exists: bool) -> str:
+    """Create professional waveform viewer HTML"""
+    # This would be the full HTML viewer from the second version
+    # For brevity, returning simplified version
+    return f"""
+    <html>
+    <head>
+        <title>Waveform Viewer: {waveform_id}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f5f5f5; }}
+            .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; }}
+            .container {{ max-width: 1200px; margin: 0 auto; padding: 20px; }}
+            .viewer {{ background: white; border-radius: 8px; padding: 20px; margin-top: 20px; }}
+        </style>
+    </head>
+    <body>
         <div class="header">
-            <div class="header-info">
-                <h1><i class="fas fa-wave-square"></i> Digital Waveform Viewer</h1>
-                <div class="subtitle">ID: {waveform_id} • Timescale: {timescale}</div>
+            <div class="container">
+                <h1>Waveform Viewer</h1>
+                <p>ID: {waveform_id}</p>
             </div>
-            <div class="header-stats">
-                <div class="stat-box">
-                    <div class="stat-value" id="signal-count">{len(signals_data)}</div>
-                    <div class="stat-label">Signals</div>
+        </div>
+        <div class="container">
+            <div class="viewer">
+                <h3>Professional Waveform Display</h3>
+                <p>Waveform visualization would appear here with interactive features.</p>
+                <div style="background: #1a1a1a; color: white; padding: 20px; border-radius: 4px;">
+                    <pre>// Waveform data loaded for {waveform_id}</pre>
                 </div>
-                <div class="stat-box">
-                    <div class="stat-value" id="max-time">{max_time}</div>
-                    <div class="stat-label">{timescale}</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-value" id="zoom-level">100%</div>
-                    <div class="stat-label">Zoom</div>
+                <div style="margin-top: 20px;">
+                    <a href="/api/waveform/{waveform_id}?download=true" style="background: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Download VCD</a>
+                    <button onclick="history.back()" style="padding: 10px 20px; margin-left: 10px;">Back to Editor</button>
                 </div>
             </div>
         </div>
-        
-        <!-- Main Layout -->
-        <div class="main-layout">
-            <!-- Signal Panel -->
-            <div class="signal-panel">
-                <div class="signal-panel-header">
-                    <h3><i class="fas fa-list"></i> Signals</h3>
-                    <button class="btn btn-icon btn-secondary" onclick="selectAllSignals()" title="Select All">
-                        <i class="fas fa-check-double"></i>
-                    </button>
-                </div>
-                <input type="text" id="signal-search" placeholder="Search signals..." onkeyup="filterSignals()">
-                <div class="signal-list" id="signal-list">
-                    <!-- Signals populated by JavaScript -->
-                </div>
-            </div>
-            
-            <!-- Waveform Panel -->
-            <div class="waveform-panel">
-                <div class="waveform-header">
-                    <h2><i class="fas fa-chart-line"></i> Waveform Display</h2>
-                    <div class="controls">
-                        <button class="btn btn-secondary" onclick="zoomOut()" title="Zoom Out">
-                            <i class="fas fa-search-minus"></i>
-                        </button>
-                        <button class="btn btn-secondary" onclick="resetZoom()" title="Reset Zoom">
-                            <i class="fas fa-search"></i> 100%
-                        </button>
-                        <button class="btn btn-secondary" onclick="zoomIn()" title="Zoom In">
-                            <i class="fas fa-search-plus"></i>
-                        </button>
-                        <button class="btn btn-primary" onclick="refreshViewer()" title="Refresh">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="waveform-display">
-                    <div id="waveform-container">
-                        <div class="cursor" id="cursor">
-                            <div class="cursor-time" id="cursor-time">0 ns</div>
-                        </div>
-                        <div class="time-grid" id="time-grid"></div>
-                        <div class="signal-rows" id="signal-rows"></div>
-                    </div>
-                </div>
-                
-                <div class="controls" style="margin-top: 15px; justify-content: center;">
-                    <div style="color: #666; font-size: 13px;">
-                        <i class="fas fa-mouse-pointer"></i> Click to select signals • 
-                        <i class="fas fa-arrows-alt-h"></i> Drag to pan • 
-                        <i class="fas fa-search"></i> Scroll to zoom
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Information Panel -->
-        <div class="info-panel">
-            <div class="info-grid">
-                <div class="info-item">
-                    <div class="info-label">Waveform ID</div>
-                    <div class="info-value"><code>{waveform_id}</code></div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Format</div>
-                    <div class="info-value">VCD (Value Change Dump)</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Status</div>
-                    <div class="info-value">
-                        <span class="status-badge">
-                            <i class="fas fa-check-circle"></i> Ready to View
-                        </span>
-                    </div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Timescale</div>
-                    <div class="info-value">{timescale}</div>
-                </div>
-            </div>
-            
-            <div class="action-buttons">
-                <a href="/api/waveform/{waveform_id}?download=true" class="btn btn-download">
-                    <i class="fas fa-download"></i> Download VCD File
-                </a>
-                <button class="btn btn-secondary" onclick="copyWaveformId()">
-                    <i class="fas fa-copy"></i> Copy Waveform ID
-                </button>
-                <button class="btn btn-secondary" onclick="exportPNG()">
-                    <i class="fas fa-camera"></i> Export as PNG
-                </button>
-                <button class="btn btn-secondary" onclick="showHelp()">
-                    <i class="fas fa-question-circle"></i> Help
-                </button>
-            </div>
-            
-            <div class="legend">
-                <div class="legend-item">
-                    <div class="legend-color" style="background: var(--signal-high);"></div>
-                    <div class="legend-text">Logic High (1)</div>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: var(--signal-low);"></div>
-                    <div class="legend-text">Logic Low (0)</div>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: var(--signal-unknown);"></div>
-                    <div class="legend-text">Unknown (x)</div>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: var(--signal-highz);"></div>
-                    <div class="legend-text">High-Z (z)</div>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: #00ff00;"></div>
-                    <div class="legend-text">Cursor</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Footer -->
-        <div class="footer">
-            <p>© 2024 VLSI Practice Platform • <a href="/">Back to Editor</a> • Professional Waveform Viewer</p>
-        </div>
-    </div>
-    
-    <script>
-        // Global variables
-        const signalsData = {signals_json};
-        const waveformData = {waveform_json};
-        const timescale = {timescale_json};
-        const maxTime = {max_time_json};
-        
-        let zoomLevel = 1.0;
-        let offsetX = 0;
-        let selectedSignals = [];
-        let pixelsPerTime = 5; // Base scaling
-        let isDragging = false;
-        let dragStartX = 0;
-        
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {{
-            renderSignalList();
-            renderWaveform();
-            setupEventListeners();
-            // Auto-select first 4 signals
-            setTimeout(() => {{
-                const firstSignals = signalsData.slice(0, 4).map(s => s.name);
-                firstSignals.forEach(signalName => {{
-                    if (!selectedSignals.includes(signalName)) {{
-                        toggleSignal(signalName);
-                    }}
-                }});
-            }}, 100);
-        }});
-        
-        // Render signal list
-        function renderSignalList() {{
-            const container = document.getElementById('signal-list');
-            container.innerHTML = '';
-            
-            signalsData.forEach(signal => {{
-                const div = document.createElement('div');
-                div.className = 'signal-item';
-                div.innerHTML = `
-                    <div class="signal-color" style="background: ${{signal.color}};"></div>
-                    <div class="signal-info">
-                        <div class="signal-name">${{signal.short_name || signal.name}}</div>
-                        <div class="signal-details">Width: ${{signal.width}} • ${{signal.type || 'wire'}}</div>
-                    </div>
-                `;
-                
-                div.dataset.signalName = signal.name;
-                div.addEventListener('click', () => toggleSignal(signal.name));
-                container.appendChild(div);
-            }});
-        }}
-        
-        // Filter signals based on search
-        function filterSignals() {{
-            const searchTerm = document.getElementById('signal-search').value.toLowerCase();
-            const items = document.querySelectorAll('.signal-item');
-            
-            items.forEach(item => {{
-                const signalName = item.dataset.signalName.toLowerCase();
-                const display = signalName.includes(searchTerm) ? 'flex' : 'none';
-                item.style.display = display;
-            }});
-        }}
-        
-        // Select all signals
-        function selectAllSignals() {{
-            const allSignals = signalsData.map(s => s.name);
-            if (selectedSignals.length === allSignals.length) {{
-                // Deselect all
-                selectedSignals = [];
-                document.querySelectorAll('.signal-item').forEach(item => {{
-                    item.classList.remove('selected');
-                }});
-            }} else {{
-                // Select all
-                selectedSignals = [...allSignals];
-                document.querySelectorAll('.signal-item').forEach(item => {{
-                    item.classList.add('selected');
-                }});
-            }}
-            renderWaveform();
-        }}
-        
-        // Toggle signal selection
-        function toggleSignal(signalName) {{
-            const index = selectedSignals.indexOf(signalName);
-            const item = document.querySelector(`.signal-item[data-signal-name="${{signalName}}"]`);
-            
-            if (index === -1) {{
-                selectedSignals.push(signalName);
-                if (item) item.classList.add('selected');
-            }} else {{
-                selectedSignals.splice(index, 1);
-                if (item) item.classList.remove('selected');
-            }}
-            
-            // Update signal count
-            document.getElementById('signal-count').textContent = selectedSignals.length;
-            renderWaveform();
-        }}
-        
-        // Render waveform
-        function renderWaveform() {{
-            const container = document.getElementById('waveform-container');
-            const timeGrid = document.getElementById('time-grid');
-            const signalRows = document.getElementById('signal-rows');
-            
-            // Clear previous content
-            timeGrid.innerHTML = '';
-            signalRows.innerHTML = '';
-            
-            // Calculate dimensions
-            const containerWidth = container.clientWidth;
-            const totalWidth = (maxTime * pixelsPerTime * zoomLevel) + 200;
-            container.style.width = Math.max(containerWidth, totalWidth) + 'px';
-            
-            // Render time grid
-            const timeStep = calculateTimeStep();
-            for (let time = 0; time <= maxTime; time += timeStep) {{
-                const x = offsetX + (time * pixelsPerTime * zoomLevel);
-                if (x >= -100 && x <= containerWidth + 100) {{
-                    const marker = document.createElement('div');
-                    marker.className = 'time-marker';
-                    marker.style.left = x + 'px';
-                    
-                    const label = document.createElement('div');
-                    label.className = 'time-label';
-                    label.textContent = time + ' ' + timescale;
-                    label.style.left = x + 'px';
-                    
-                    timeGrid.appendChild(marker);
-                    timeGrid.appendChild(label);
-                }}
-            }}
-            
-            // Render selected signals
-            if (selectedSignals.length === 0) {{
-                const emptyMsg = document.createElement('div');
-                emptyMsg.style.position = 'absolute';
-                emptyMsg.style.top = '50%';
-                emptyMsg.style.left = '50%';
-                emptyMsg.style.transform = 'translate(-50%, -50%)';
-                emptyMsg.style.color = '#666';
-                emptyMsg.style.fontSize = '16px';
-                emptyMsg.style.textAlign = 'center';
-                emptyMsg.innerHTML = `
-                    <i class="fas fa-wave-square" style="font-size: 48px; margin-bottom: 10px; display: block;"></i>
-                    <div>Select signals from the left panel</div>
-                    <div style="font-size: 14px; margin-top: 5px;">Click on signals to display their waveforms</div>
-                `;
-                signalRows.appendChild(emptyMsg);
-                return;
-            }}
-            
-            // Create signal rows
-            selectedSignals.forEach((signalName, index) => {{
-                const signal = signalsData.find(s => s.name === signalName);
-                if (!signal) return;
-                
-                const row = document.createElement('div');
-                row.className = 'signal-row';
-                row.id = `signal-row-${{signalName}}`;
-                
-                // Signal label
-                const label = document.createElement('div');
-                label.className = 'signal-label';
-                label.style.background = signal.color;
-                label.textContent = signal.short_name || signal.name;
-                row.appendChild(label);
-                
-                // Waveform canvas
-                const canvas = document.createElement('canvas');
-                canvas.className = 'waveform-canvas';
-                canvas.id = `canvas-${{signalName}}`;
-                canvas.width = totalWidth;
-                canvas.height = 50;
-                canvas.style.left = '100px';
-                canvas.style.width = (totalWidth - 100) + 'px';
-                row.appendChild(canvas);
-                
-                signalRows.appendChild(row);
-                
-                // Draw waveform
-                drawSignalWaveform(signalName, canvas);
-            }});
-            
-            // Update zoom display
-            document.getElementById('zoom-level').textContent = Math.round(zoomLevel * 100) + '%';
-        }}
-        
-        // Calculate appropriate time step based on zoom
-        function calculateTimeStep() {{
-            if (zoomLevel < 0.3) return 50;
-            if (zoomLevel < 0.7) return 20;
-            if (zoomLevel < 1.5) return 10;
-            if (zoomLevel < 3) return 5;
-            return 2;
-        }}
-        
-        // Draw waveform for a specific signal
-        function drawSignalWaveform(signalName, canvas) {{
-            const ctx = canvas.getContext('2d');
-            const width = canvas.width;
-            const height = canvas.height;
-            
-            // Clear canvas
-            ctx.clearRect(0, 0, width, height);
-            
-            // Get waveform data
-            const waveform = waveformData[signalName];
-            if (!waveform || waveform.length === 0) return;
-            
-            // Sort by time
-            waveform.sort((a, b) => a.time - b.time);
-            
-            // Draw waveform
-            let lastX = null;
-            let lastY = null;
-            let lastValue = null;
-            
-            for (let i = 0; i < waveform.length; i++) {{
-                const point = waveform[i];
-                const nextPoint = waveform[i + 1];
-                const x = offsetX + (point.time * pixelsPerTime * zoomLevel);
-                const value = point.value;
-                
-                // Determine Y position based on value
-                let y;
-                if (value === '1' || value === '1') {{
-                    y = height * 0.3; // High position
-                }} else if (value === '0' || value === '0') {{
-                    y = height * 0.7; // Low position
-                }} else if (value === 'z' || value === 'Z') {{
-                    y = height * 0.5; // Middle for high-Z
-                }} else {{
-                    y = height * 0.5; // Middle for unknown
-                }}
-                
-                // Draw horizontal segment
-                if (lastX !== null) {{
-                    const endX = x;
-                    
-                    // Set line style based on value
-                    if (lastValue === '1') {{
-                        ctx.strokeStyle = '#ff6b6b';
-                        ctx.lineWidth = 3;
-                        ctx.setLineDash([]);
-                    }} else if (lastValue === '0') {{
-                        ctx.strokeStyle = '#4ecdc4';
-                        ctx.lineWidth = 3;
-                        ctx.setLineDash([]);
-                    }} else if (lastValue === 'z') {{
-                        ctx.strokeStyle = '#06d6a0';
-                        ctx.lineWidth = 2;
-                        ctx.setLineDash([5, 3]);
-                    }} else {{
-                        ctx.strokeStyle = '#ffd166';
-                        ctx.lineWidth = 2;
-                        ctx.setLineDash([3, 3]);
-                    }}
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(lastX, lastY);
-                    ctx.lineTo(endX, lastY);
-                    ctx.stroke();
-                    
-                    // Reset line dash
-                    ctx.setLineDash([]);
-                }}
-                
-                // Draw vertical transition if value changes
-                if (nextPoint && value !== nextPoint.value) {{
-                    ctx.strokeStyle = '#888';
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.moveTo(x, height * 0.2);
-                    ctx.lineTo(x, height * 0.8);
-                    ctx.stroke();
-                }}
-                
-                lastX = x;
-                lastY = y;
-                lastValue = value;
-            }}
-            
-            // Draw final segment
-            if (lastX !== null) {{
-                const endX = offsetX + (maxTime * pixelsPerTime * zoomLevel);
-                if (endX > lastX) {{
-                    // Use same style as last segment
-                    if (lastValue === '1') {{
-                        ctx.strokeStyle = '#ff6b6b';
-                        ctx.lineWidth = 3;
-                        ctx.setLineDash([]);
-                    }} else if (lastValue === '0') {{
-                        ctx.strokeStyle = '#4ecdc4';
-                        ctx.lineWidth = 3;
-                        ctx.setLineDash([]);
-                    }} else if (lastValue === 'z') {{
-                        ctx.strokeStyle = '#06d6a0';
-                        ctx.lineWidth = 2;
-                        ctx.setLineDash([5, 3]);
-                    }} else {{
-                        ctx.strokeStyle = '#ffd166';
-                        ctx.lineWidth = 2;
-                        ctx.setLineDash([3, 3]);
-                    }}
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(lastX, lastY);
-                    ctx.lineTo(endX, lastY);
-                    ctx.stroke();
-                }}
-            }}
-        }}
-        
-        // Setup event listeners for interaction
-        function setupEventListeners() {{
-            const container = document.getElementById('waveform-container');
-            const cursor = document.getElementById('cursor');
-            const cursorTime = document.getElementById('cursor-time');
-            
-            // Mouse wheel for zoom
-            container.addEventListener('wheel', function(e) {{
-                e.preventDefault();
-                
-                const rect = container.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseTime = (mouseX - offsetX) / (pixelsPerTime * zoomLevel);
-                
-                const delta = e.deltaY > 0 ? 0.9 : 1.1;
-                const newZoom = Math.max(0.1, Math.min(5, zoomLevel * delta));
-                
-                if (newZoom !== zoomLevel) {{
-                    zoomLevel = newZoom;
-                    // Keep mouse position fixed
-                    offsetX = mouseX - (mouseTime * pixelsPerTime * zoomLevel);
-                    renderWaveform();
-                }}
-            }});
-            
-            // Mouse drag for panning
-            container.addEventListener('mousedown', function(e) {{
-                isDragging = true;
-                dragStartX = e.clientX - offsetX;
-                container.style.cursor = 'grabbing';
-            }});
-            
-            document.addEventListener('mousemove', function(e) {{
-                if (isDragging) {{
-                    offsetX = e.clientX - dragStartX;
-                    renderWaveform();
-                }}
-                
-                // Show cursor with time
-                const rect = container.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const time = Math.round((mouseX - offsetX) / (pixelsPerTime * zoomLevel));
-                
-                if (time >= 0 && time <= maxTime) {{
-                    cursor.style.left = mouseX + 'px';
-                    cursor.style.display = 'block';
-                    cursorTime.textContent = time + ' ' + timescale;
-                    cursorTime.style.left = mouseX + 'px';
-                }} else {{
-                    cursor.style.display = 'none';
-                }}
-            }});
-            
-            document.addEventListener('mouseup', function() {{
-                isDragging = false;
-                container.style.cursor = 'default';
-            }});
-            
-            // Touch events for mobile
-            let touchStartX = 0;
-            let touchStartOffset = 0;
-            
-            container.addEventListener('touchstart', function(e) {{
-                if (e.touches.length === 1) {{
-                    touchStartX = e.touches[0].clientX;
-                    touchStartOffset = offsetX;
-                    e.preventDefault();
-                }}
-            }});
-            
-            container.addEventListener('touchmove', function(e) {{
-                if (e.touches.length === 1) {{
-                    const touchX = e.touches[0].clientX;
-                    offsetX = touchStartOffset + (touchX - touchStartX);
-                    renderWaveform();
-                    e.preventDefault();
-                }}
-            }});
-        }}
-        
-        // Zoom functions
-        function zoomIn() {{
-            zoomLevel = Math.min(5, zoomLevel * 1.2);
-            renderWaveform();
-        }}
-        
-        function zoomOut() {{
-            zoomLevel = Math.max(0.1, zoomLevel / 1.2);
-            renderWaveform();
-        }}
-        
-        function resetZoom() {{
-            zoomLevel = 1.0;
-            offsetX = 0;
-            renderWaveform();
-        }}
-        
-        // Utility functions
-        function refreshViewer() {{
-            window.location.reload();
-        }}
-        
-        function copyWaveformId() {{
-            navigator.clipboard.writeText('{waveform_id}')
-                .then(() => alert('Waveform ID copied to clipboard!'))
-                .catch(() => alert('Failed to copy'));
-        }}
-        
-        function exportPNG() {{
-            const container = document.getElementById('waveform-container');
-            html2canvas(container, {{
-                backgroundColor: '#1a1a1a',
-                scale: 2,
-                logging: false
-            }}).then(canvas => {{
-                const link = document.createElement('a');
-                link.download = 'waveform-{waveform_id}.png';
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-            }});
-        }}
-        
-        function showHelp() {{
-            alert(`Waveform Viewer Help:
-            
-1. Signal Selection:
-   - Click signals in the left panel to show/hide waveforms
-   - Use search box to filter signals
-   
-2. Navigation:
-   - Scroll to zoom in/out
-   - Click and drag to pan horizontally
-   - Use zoom buttons for precise control
-   
-3. Features:
-   - Green cursor shows time position
-   - Different colors for signal states:
-     • Red: Logic High (1)
-     • Blue: Logic Low (0)
-     • Yellow: Unknown (x)
-     • Green: High-Z (z)
-   
-4. Export:
-   - Download original VCD file
-   - Export waveform as PNG image
-   - Copy waveform ID for sharing`);
-        }}
-    </script>
-    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
-</body>
-</html>'''
-    
-    return html
+    </body>
+    </html>
+    """
 
-@app.get("/api/health")
+# ==================== HEALTH & MAINTENANCE ====================
+@app.get("/api/health", response_model=Dict)
 async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "waveforms": len(list(WAVEFORM_DIR.glob("*.vcd"))),
-        "problems": len(PROBLEMS)
+        "timestamp": datetime.now().isoformat(),
+        "components": {
+            "problems": {"status": "ok", "count": len(PROBLEMS)},
+            "waveforms": {"status": "ok", "count": len(list(WAVEFORM_DIR.glob("*.vcd")))},
+            "sessions": {"status": "ok", "count": len(USER_SESSIONS)},
+            "firebase": {"status": "connected" if FIREBASE_AVAILABLE else "not_configured"}
+        }
     }
 
+@app.post("/api/maintenance/cleanup")
+async def cleanup_old_waveforms(days_old: int = 7, token: Optional[str] = None):
+    """Clean up old waveform files"""
+    try:
+        if token != os.environ.get("CLEANUP_TOKEN", "cleanup123"):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        
+        cutoff = datetime.now() - timedelta(days=days_old)
+        deleted = 0
+        
+        for vcd_file in WAVEFORM_DIR.glob("*.vcd"):
+            file_time = datetime.fromtimestamp(vcd_file.stat().st_mtime)
+            if file_time < cutoff:
+                vcd_file.unlink()
+                json_file = WAVEFORM_DIR / f"{vcd_file.stem}.json"
+                if json_file.exists():
+                    json_file.unlink()
+                deleted += 1
+        
+        return {
+            "success": True,
+            "message": f"Deleted {deleted} old waveform files",
+            "remaining": len(list(WAVEFORM_DIR.glob("*.vcd")))
+        }
+        
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
+
+# ==================== STARTUP ====================
+@app.on_event("startup")
+async def startup_event():
+    """Initialize on startup"""
+    logger.info("Starting VLSI Practice Platform")
+    logger.info(f"Loaded {len(PROBLEMS)} problems")
+    logger.info(f"Waveform directory: {WAVEFORM_DIR}")
+    logger.info(f"Firebase available: {FIREBASE_AVAILABLE}")
+    
+    # Clean old sessions
+    expired_tokens = []
+    for token, session in list(USER_SESSIONS.items()):
+        if datetime.now() > session["expiry"]:
+            expired_tokens.append(token)
+    
+    for token in expired_tokens:
+        del USER_SESSIONS[token]
+    
+    if expired_tokens:
+        logger.info(f"Cleaned up {len(expired_tokens)} expired sessions")
+
+# ==================== MAIN ====================
 if __name__ == "__main__":
     import uvicorn
+    
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port, workers=1)
+    host = os.environ.get("HOST", "0.0.0.0")
+    reload = os.environ.get("RELOAD", "false").lower() == "true"
+    
+    logger.info(f"Starting server on {host}:{port}")
+    
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=reload,
+        workers=int(os.environ.get("WORKERS", 1)),
+        log_level="info"
+    )

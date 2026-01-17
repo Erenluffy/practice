@@ -187,11 +187,11 @@ async def oauth_login(oauth_data: OAuthRequest):
         user_id = None
         email = None
         name = None
+        provider = oauth_data.provider.lower()
         
         # Handle Google OAuth
-        if oauth_data.provider == "google" and oauth_data.id_token:
-            # For now, use simple demo mode since Firebase is having issues
-            # Extract email from token (simplified)
+        if provider == "google" and oauth_data.id_token:
+            # Extract user info from Google ID token (simplified for demo)
             try:
                 # This is a simplified version - in production use proper JWT verification
                 import base64
@@ -214,103 +214,27 @@ async def oauth_login(oauth_data: OAuthRequest):
                     name = token_data.get('name', email.split('@')[0] if email else 'User')
                     user_id = f"google_{token_data.get('sub', 'user')}"
                     
-                    print(f"✅ Google OAuth login (demo): {email}")
+                    logger.info(f"✅ Google OAuth login: {email}")
                 else:
                     raise ValueError("Invalid token format")
                     
             except Exception as e:
                 logger.error(f"Google token parsing failed: {e}")
-                # Fallback to demo user
-                email = "demo@google.user"
+                # Fallback to demo user for testing
+                import secrets
+                email = f"google.user{secrets.token_hex(4)}@example.com"
                 name = "Google User"
-                user_id = f"google_demo_{secrets.token_hex(8)}"
-        
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported provider: {oauth_data.provider}"
-            )
-        
-        if not user_id or not email:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to get user information from OAuth provider"
-            )
-        
-        # Create session token (use simple local auth)
-        session_token = create_session_token(user_id)
-        
-        # Create user data
-        user_data = {
-            "user_id": user_id,
-            "email": email,
-            "name": name,
-            "session_token": session_token,
-            "total_points": 0,
-            "solved_problems": [],
-            "settings": {},
-            "auth_provider": oauth_data.provider
-        }
-        
-        # Store in session
-        USER_SESSIONS[session_token] = {
-            "user_id": user_id,
-            "email": email,
-            "name": name,
-            "created": datetime.now(),
-            "expiry": datetime.now() + timedelta(hours=24),
-            "last_activity": datetime.now()
-        }
-        
-        return {
-            "success": True,
-            "message": f"{oauth_data.provider.capitalize()} login successful",
-            "data": user_data
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"OAuth login failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"OAuth login failed: {str(e)}"
-        )
-        
-        # Handle GitHub OAuth
-        elif oauth_data.provider == "github" and oauth_data.access_token:
-            # Exchange GitHub access token for user info
-            try:
-                # Get user info from GitHub API
-                headers = {'Authorization': f'token {oauth_data.access_token}'}
-                user_response = requests.get('https://api.github.com/user', headers=headers)
-                email_response = requests.get('https://api.github.com/user/emails', headers=headers)
+                user_id = f"google_{secrets.token_hex(12)}"
                 
-                if user_response.status_code == 200:
-                    github_data = user_response.json()
-                    email_data = email_response.json()
-                    
-                    # Get primary email
-                    primary_email = next((e['email'] for e in email_data if e['primary']), None)
-                    
-                    user_id = f"github_{github_data['id']}"
-                    email = primary_email or f"{github_data['login']}@github.user"
-                    name = github_data.get('name', github_data['login'])
-                    
-                    print(f"✅ GitHub OAuth login: {email}")
-                else:
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Invalid GitHub token"
-                    )
-                    
-            except Exception as e:
-                logger.error(f"GitHub OAuth failed: {e}")
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="GitHub authentication failed"
-                )
-        
+        # Handle GitHub OAuth (if you want to keep it for future)
+        elif provider == "github" and oauth_data.access_token:
+            # GitHub OAuth implementation removed for now
+            # You can re-enable this later if needed
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="GitHub OAuth is temporarily disabled"
+            )
+            
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -323,8 +247,10 @@ async def oauth_login(oauth_data: OAuthRequest):
                 detail="Failed to get user information from OAuth provider"
             )
         
-        # Check if user exists
+        # Check if user exists in Firebase or local sessions
         user_data = None
+        user_exists = False
+        
         if FIREBASE_AVAILABLE and db:
             # Try to find user by email
             users_ref = db.collection("users")
@@ -334,6 +260,7 @@ async def oauth_login(oauth_data: OAuthRequest):
                 user_data = doc.to_dict()
                 user_data["id"] = doc.id
                 user_id = doc.id
+                user_exists = True
                 break
         
         # Create new user if doesn't exist
@@ -352,43 +279,57 @@ async def oauth_login(oauth_data: OAuthRequest):
                     "auto_save": True,
                     "waveform_auto_open": True
                 },
-                "auth_provider": oauth_data.provider,
-                "oauth_id": user_id
+                "auth_provider": provider,
+                "oauth_id": user_id,
+                "password_hash": None  # No password for OAuth users
             }
             
-            # Save to Firebase
+            # Save to Firebase if available
             if FIREBASE_AVAILABLE and db:
                 # Use email-based ID for consistency
                 firebase_user_id = create_user_id(email)
-                db.collection("users").document(firebase_user_id).set(user_obj)
-                user_data = user_obj
-                user_data["id"] = firebase_user_id
+                try:
+                    db.collection("users").document(firebase_user_id).set(user_obj)
+                    user_data = user_obj
+                    user_data["id"] = firebase_user_id
+                    user_id = firebase_user_id
+                    logger.info(f"Created new Firebase user: {email}")
+                except Exception as e:
+                    logger.error(f"Failed to create Firebase user: {e}")
+                    # Fall back to local storage
+                    user_data = user_obj
+                    user_data["id"] = user_id
+                    USER_SESSIONS[f"user_{user_id}"] = user_data
             else:
                 # Local storage
                 user_data = user_obj
                 user_data["id"] = user_id
                 USER_SESSIONS[f"user_{user_id}"] = user_data
-        
-        # Update last login
-        user_data["last_login"] = datetime.utcnow().isoformat()
-        if FIREBASE_AVAILABLE and db:
-            db.collection("users").document(user_data["id"]).update({"last_login": user_data["last_login"]})
+                logger.info(f"Created new local OAuth user: {email}")
+        else:
+            # Update last login for existing user
+            user_data["last_login"] = datetime.utcnow().isoformat()
+            if FIREBASE_AVAILABLE and db:
+                try:
+                    db.collection("users").document(user_id).update({"last_login": user_data["last_login"]})
+                except Exception as e:
+                    logger.error(f"Failed to update last login: {e}")
         
         # Create session token
-        session_token = create_session_token(user_data["id"])
+        session_token = create_session_token(user_id)
         
         return {
             "success": True,
-            "message": f"{oauth_data.provider.capitalize()} login successful",
+            "message": f"{provider.capitalize()} login successful",
             "data": {
-                "user_id": user_data["id"],
+                "user_id": user_id,
                 "email": email,
                 "name": name,
                 "session_token": session_token,
                 "total_points": user_data.get("total_points", 0),
                 "solved_problems": len(user_data.get("solved_problems", [])),
                 "settings": user_data.get("settings", {}),
-                "auth_provider": oauth_data.provider
+                "auth_provider": provider
             }
         }
         
@@ -400,34 +341,38 @@ async def oauth_login(oauth_data: OAuthRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"OAuth login failed: {str(e)}"
         )
-
 @app.get("/api/auth/oauth/providers", response_model=Dict)
 async def get_oauth_providers():
     """Get list of available OAuth providers and their config"""
     try:
         providers = []
         
-        # You can dynamically fetch these from Firebase config
-        # For now, return hardcoded list
+        # Add Google provider
+        google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+        google_enabled = bool(google_client_id) or True  # Enable even without config for demo
+        
         providers.append({
             "id": "google",
             "name": "Google",
             "icon": "fab fa-google",
             "color": "#DB4437",
-            "auth_url": "/api/auth/oauth/google",  # Client-side will handle actual OAuth flow
-            "enabled": True
+            "auth_url": "/api/auth/oauth/google",
+            "enabled": google_enabled,
+            "client_id": google_client_id if google_client_id else "demo-mode"
         })
         
-        providers.append({
-            "id": "github",
-            "name": "GitHub",
-            "icon": "fab fa-github",
-            "color": "#333333",
-            "auth_url": "/api/auth/oauth/github",
-            "enabled": True
-        })
-        
-        # Add more providers as needed
+        # Optional: Add GitHub if you want to enable it later
+        # github_client_id = os.environ.get("GITHUB_CLIENT_ID", "")
+        # if github_client_id:
+        #     providers.append({
+        #         "id": "github",
+        #         "name": "GitHub",
+        #         "icon": "fab fa-github",
+        #         "color": "#333333",
+        #         "auth_url": "/api/auth/oauth/github",
+        #         "enabled": True,
+        #         "client_id": github_client_id
+        #     })
         
         return {
             "success": True,

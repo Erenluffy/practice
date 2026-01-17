@@ -128,10 +128,18 @@ class LeaderboardEntry(BaseModel):
     rank: int
 
 # ==================== AUTH & SESSION MANAGEMENT ====================
+# In your app.py, update the session management functions
+
 def create_session_token(user_id: str, remember_me: bool = False) -> str:
-    """Create a secure session token"""
-    token = secrets.token_urlsafe(32)
-    expiry_hours = 720 if remember_me else 24  # 30 days or 1 day
+    """Create a secure session token with longer expiry"""
+    token = secrets.token_urlsafe(64)  # More secure token
+    
+    # Longer expiry for better user experience
+    if remember_me:
+        expiry_hours = 720  # 30 days
+    else:
+        expiry_hours = 168  # 7 days (instead of 24 hours)
+    
     expiry = datetime.now() + timedelta(hours=expiry_hours)
     
     USER_SESSIONS[token] = {
@@ -140,24 +148,31 @@ def create_session_token(user_id: str, remember_me: bool = False) -> str:
         "expiry": expiry,
         "last_activity": datetime.now()
     }
+    
+    logger.info(f"Session created for user {user_id}, expires at {expiry}")
     return token
 
 def validate_session_token(token: str) -> Optional[Dict]:
     """Validate session token and return user data"""
-    if token not in USER_SESSIONS:
+    if not token or token not in USER_SESSIONS:
+        logger.warning(f"Token not found or invalid: {token[:20]}...")
         return None
     
     session = USER_SESSIONS[token]
     
-    # Check expiry
+    # Check expiry with grace period
     if datetime.now() > session["expiry"]:
+        logger.info(f"Token expired: Created {session['created']}, Expired {session['expiry']}")
         del USER_SESSIONS[token]
         return None
     
-    # Update last activity
-    session["last_activity"] = datetime.now()
+    # Update last activity with 1-hour grace period
+    # Allow some time between activities
+    last_activity = session.get("last_activity", session["created"])
+    if datetime.now() - last_activity > timedelta(hours=1):
+        session["last_activity"] = datetime.now()
+    
     return session
-
 def get_password_hash(password: str) -> str:
     """Hash password using SHA-256 (use bcrypt in production)"""
     salt = secrets.token_hex(16)
@@ -303,61 +318,197 @@ async def oauth_login(oauth_data: OAuthRequest):
                 )
         
         # Create session
-        session_token = create_session_token(user_id)
+      
+        # Create session token with longer expiry for OAuth users
+        session_token = create_session_token(user_id, remember_me=True)
         
-        # Store user in memory
-        user_data = {
-            "user_id": user_id,
-            "email": email,
-            "name": name,
-            "session_token": session_token,
-            "total_points": 0,
-            "solved_problems": [],
-            "settings": {},
-            "auth_provider": "google"
-        }
+        # Get or create user
+        user_key = f"user_{user_id}"
         
-        USER_SESSIONS[session_token] = {
-            "user_id": user_id,
-            "email": email,
-            "name": name,
-            "created": datetime.now(),
-            "expiry": datetime.now() + timedelta(hours=24)
-        }
-        
-        # Store in user database
-        USER_SESSIONS[f"user_{user_id}"] = {
-            "user_id": user_id,
-            "email": email,
-            "name": name,
-            "password_hash": None,
-            "created_at": datetime.utcnow().isoformat(),
-            "last_login": datetime.utcnow().isoformat(),
-            "progress": [],
-            "solved_problems": [],
-            "total_points": 0,
-            "role": "user",
-            "auth_provider": "google",
-            "settings": {
-                "theme": "dark",
-                "auto_save": True,
-                "waveform_auto_open": True
+        if user_key not in USER_SESSIONS:
+            # Create new user
+            USER_SESSIONS[user_key] = {
+                "user_id": user_id,
+                "email": email,
+                "name": name,
+                "password_hash": None,
+                "created_at": datetime.utcnow().isoformat(),
+                "last_login": datetime.utcnow().isoformat(),
+                "progress": [],
+                "solved_problems": [],
+                "total_points": 0,
+                "role": "user",
+                "auth_provider": "google",
+                "settings": {
+                    "theme": "dark",
+                    "auto_save": True,
+                    "waveform_auto_open": True
+                },
+                "attempts": {}
             }
-        }
         
+        # Ensure session is linked to user
+        user_data = USER_SESSIONS[user_key]
+        
+        # Update last login
+        user_data["last_login"] = datetime.utcnow().isoformat()
+        
+        # Return comprehensive user data
         return {
             "success": True,
             "message": "Google login successful",
-            "data": user_data
+            "data": {
+                "user_id": user_id,
+                "email": email,
+                "name": name,
+                "session_token": session_token,
+                "total_points": user_data.get("total_points", 0),
+                "solved_problems": user_data.get("solved_problems", []),
+                "settings": user_data.get("settings", {}),
+                "auth_provider": "google",
+                "created_at": user_data.get("created_at")
+            }
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"OAuth login failed: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Login failed: {str(e)}"
+        )
+# Add these endpoints to your app.py
+
+@app.get("/api/auth/session/check", response_model=Dict)
+async def check_session(token: Optional[str] = None):
+    """Check if session is valid"""
+    if not token:
+        return {"valid": False, "reason": "No token provided"}
+    
+    session = validate_session_token(token)
+    if session:
+        return {
+            "valid": True,
+            "user_id": session["user_id"],
+            "expires_at": session["expiry"].isoformat()
+        }
+    return {"valid": False, "reason": "Invalid or expired token"}
+
+@app.post("/api/auth/session/validate", response_model=Dict)
+async def validate_session(request: Dict):
+    """Validate session with user_id and token"""
+    token = request.get("session_token")
+    user_id = request.get("user_id")
+    
+    if not token or not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Both session_token and user_id are required"
+        )
+    
+    session = validate_session_token(token)
+    if session and session["user_id"] == user_id:
+        return {
+            "valid": True,
+            "user_id": user_id,
+            "expires_at": session["expiry"].isoformat()
+        }
+    
+    return {"valid": False, "reason": "Invalid session"}
+
+# Update the debug session endpoint to be more robust
+@app.get("/api/auth/debug/session", response_model=Dict)
+async def debug_session(user_id: Optional[str] = None, token: Optional[str] = None):
+    """Debug endpoint to check session status"""
+    debug_info = {
+        "total_sessions": len(USER_SESSIONS),
+        "sessions": list(USER_SESSIONS.keys())[:5],  # First 5 tokens
+        "user_found": False,
+        "token_valid": False,
+        "user_in_sessions": False,
+        "session_expired": False
+    }
+    
+    if user_id:
+        user_key = f"user_{user_id}"
+        debug_info["user_found"] = user_key in USER_SESSIONS
+        
+        if debug_info["user_found"]:
+            user_data = USER_SESSIONS[user_key]
+            debug_info["user_email"] = user_data.get("email")
+            debug_info["solved_problems"] = user_data.get("solved_problems", [])
+            debug_info["total_points"] = user_data.get("total_points", 0)
+            debug_info["auth_provider"] = user_data.get("auth_provider", "unknown")
+    
+    if token:
+        # Check all sessions for this token
+        if token in USER_SESSIONS:
+            session = USER_SESSIONS[token]
+            debug_info["token_valid"] = True
+            debug_info["session_user_id"] = session.get("user_id")
+            debug_info["session_created"] = session.get("created").isoformat() if session.get("created") else None
+            debug_info["session_expiry"] = session.get("expiry").isoformat() if session.get("expiry") else None
+            
+            # Check if expired
+            if session.get("expiry"):
+                debug_info["session_expired"] = datetime.now() > session["expiry"]
+        else:
+            debug_info["token_valid"] = False
+            debug_info["reason"] = "Token not found in sessions"
+    
+    return debug_info
+@app.post("/api/auth/session/refresh", response_model=Dict)
+async def refresh_session(session_token: str):
+    """Refresh an existing session"""
+    try:
+        if not session_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Session token required"
+            )
+        
+        # Find session by token
+        session = None
+        for token, sess in USER_SESSIONS.items():
+            if token == session_token:
+                session = sess
+                break
+        
+        if not session:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid session"
+            )
+        
+        # Check if session is expired
+        if datetime.now() > session["expiry"]:
+            raise HTTPException(
+                status_code=401,
+                detail="Session expired"
+            )
+        
+        # Extend session expiry
+        user_id = session["user_id"]
+        new_token = create_session_token(user_id, remember_me=True)
+        
+        # Link new token to same user session
+        USER_SESSIONS[new_token] = session
+        
+        return {
+            "success": True,
+            "message": "Session refreshed",
+            "data": {
+                "session_token": new_token,
+                "expires_at": session["expiry"].isoformat()
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Session refresh failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Session refresh failed"
         )
 # Add this helper function at the top of your app.py
 def clean_google_client_id(client_id: str) -> str:

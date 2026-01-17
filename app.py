@@ -170,7 +170,208 @@ def verify_password(stored_hash: str, password: str) -> bool:
 def create_user_id(email: str) -> str:
     """Create deterministic user ID from email"""
     return hashlib.sha256(email.encode()).hexdigest()[:20]
+# ==================== OAUTH ENDPOINTS ====================
 
+class OAuthRequest(BaseModel):
+    provider: str  # google, github, etc.
+    id_token: Optional[str] = None
+    access_token: Optional[str] = None
+    code: Optional[str] = None  # For OAuth code flow
+
+@app.post("/api/auth/oauth/login", response_model=Dict)
+async def oauth_login(oauth_data: OAuthRequest):
+    """Handle OAuth login from various providers"""
+    try:
+        user_id = None
+        email = None
+        name = None
+        
+        # Handle Google OAuth
+        if oauth_data.provider == "google" and oauth_data.id_token:
+            # Verify Google ID token using Firebase Admin SDK
+            if FIREBASE_AVAILABLE:
+                try:
+                    from firebase_admin import auth as firebase_auth
+                    
+                    # Verify the Google ID token
+                    decoded_token = firebase_auth.verify_id_token(oauth_data.id_token)
+                    user_id = decoded_token['uid']
+                    email = decoded_token.get('email')
+                    name = decoded_token.get('name', email.split('@')[0] if email else 'User')
+                    
+                    print(f"✅ Google OAuth login: {email}")
+                    
+                except Exception as e:
+                    logger.error(f"Google token verification failed: {e}")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid Google token"
+                    )
+        
+        # Handle GitHub OAuth
+        elif oauth_data.provider == "github" and oauth_data.access_token:
+            # Exchange GitHub access token for user info
+            try:
+                # Get user info from GitHub API
+                headers = {'Authorization': f'token {oauth_data.access_token}'}
+                user_response = requests.get('https://api.github.com/user', headers=headers)
+                email_response = requests.get('https://api.github.com/user/emails', headers=headers)
+                
+                if user_response.status_code == 200:
+                    github_data = user_response.json()
+                    email_data = email_response.json()
+                    
+                    # Get primary email
+                    primary_email = next((e['email'] for e in email_data if e['primary']), None)
+                    
+                    user_id = f"github_{github_data['id']}"
+                    email = primary_email or f"{github_data['login']}@github.user"
+                    name = github_data.get('name', github_data['login'])
+                    
+                    print(f"✅ GitHub OAuth login: {email}")
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid GitHub token"
+                    )
+                    
+            except Exception as e:
+                logger.error(f"GitHub OAuth failed: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="GitHub authentication failed"
+                )
+        
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported provider or missing tokens: {oauth_data.provider}"
+            )
+        
+        if not user_id or not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to get user information from OAuth provider"
+            )
+        
+        # Check if user exists
+        user_data = None
+        if FIREBASE_AVAILABLE and db:
+            # Try to find user by email
+            users_ref = db.collection("users")
+            query = users_ref.where("email", "==", email).limit(1).stream()
+            
+            for doc in query:
+                user_data = doc.to_dict()
+                user_data["id"] = doc.id
+                user_id = doc.id
+                break
+        
+        # Create new user if doesn't exist
+        if not user_data:
+            user_obj = {
+                "email": email,
+                "name": name,
+                "created_at": datetime.utcnow().isoformat(),
+                "last_login": datetime.utcnow().isoformat(),
+                "progress": [],
+                "solved_problems": [],
+                "total_points": 0,
+                "role": "user",
+                "settings": {
+                    "theme": "dark",
+                    "auto_save": True,
+                    "waveform_auto_open": True
+                },
+                "auth_provider": oauth_data.provider,
+                "oauth_id": user_id
+            }
+            
+            # Save to Firebase
+            if FIREBASE_AVAILABLE and db:
+                # Use email-based ID for consistency
+                firebase_user_id = create_user_id(email)
+                db.collection("users").document(firebase_user_id).set(user_obj)
+                user_data = user_obj
+                user_data["id"] = firebase_user_id
+            else:
+                # Local storage
+                user_data = user_obj
+                user_data["id"] = user_id
+                USER_SESSIONS[f"user_{user_id}"] = user_data
+        
+        # Update last login
+        user_data["last_login"] = datetime.utcnow().isoformat()
+        if FIREBASE_AVAILABLE and db:
+            db.collection("users").document(user_data["id"]).update({"last_login": user_data["last_login"]})
+        
+        # Create session token
+        session_token = create_session_token(user_data["id"])
+        
+        return {
+            "success": True,
+            "message": f"{oauth_data.provider.capitalize()} login successful",
+            "data": {
+                "user_id": user_data["id"],
+                "email": email,
+                "name": name,
+                "session_token": session_token,
+                "total_points": user_data.get("total_points", 0),
+                "solved_problems": len(user_data.get("solved_problems", [])),
+                "settings": user_data.get("settings", {}),
+                "auth_provider": oauth_data.provider
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OAuth login failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"OAuth login failed: {str(e)}"
+        )
+
+@app.get("/api/auth/oauth/providers", response_model=Dict)
+async def get_oauth_providers():
+    """Get list of available OAuth providers and their config"""
+    try:
+        providers = []
+        
+        # You can dynamically fetch these from Firebase config
+        # For now, return hardcoded list
+        providers.append({
+            "id": "google",
+            "name": "Google",
+            "icon": "fab fa-google",
+            "color": "#DB4437",
+            "auth_url": "/api/auth/oauth/google",  # Client-side will handle actual OAuth flow
+            "enabled": True
+        })
+        
+        providers.append({
+            "id": "github",
+            "name": "GitHub",
+            "icon": "fab fa-github",
+            "color": "#333333",
+            "auth_url": "/api/auth/oauth/github",
+            "enabled": True
+        })
+        
+        # Add more providers as needed
+        
+        return {
+            "success": True,
+            "providers": providers,
+            "message": "Available OAuth providers"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get OAuth providers: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get OAuth providers"
+        )
 # ==================== PROBLEM MANAGEMENT ====================
 def load_problems() -> List[Dict]:
     """Load problems from JSON file with caching"""

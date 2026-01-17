@@ -27,7 +27,8 @@ from enum import Enum
 import zipfile
 import io
 import asyncio
-
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 # Try Firebase import (optional)
 
 try:

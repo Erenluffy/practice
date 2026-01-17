@@ -967,7 +967,60 @@ async def get_solution(problem_id: str, user_id: Optional[str] = None):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get solution: {str(e)}"
         )
-
+# Add this helper function in your app.py
+def get_or_create_user_from_oauth(user_id: str, email: str, name: str, auth_provider: str):
+    """Get existing user or create new one for OAuth login"""
+    try:
+        # Check if user exists in memory
+        user_key = f"user_{user_id}"
+        
+        if user_key in USER_SESSIONS:
+            logger.info(f"User found in memory: {email}")
+            user_data = USER_SESSIONS[user_key]
+            
+            # Update last login
+            user_data["last_login"] = datetime.utcnow().isoformat()
+            return user_data
+        
+        # Create new user
+        logger.info(f"Creating new OAuth user: {email}")
+        
+        user_data = {
+            "user_id": user_id,
+            "email": email,
+            "name": name,
+            "password_hash": None,  # No password for OAuth users
+            "created_at": datetime.utcnow().isoformat(),
+            "last_login": datetime.utcnow().isoformat(),
+            "progress": [],
+            "solved_problems": [],
+            "total_points": 0,
+            "role": "user",
+            "auth_provider": auth_provider,
+            "settings": {
+                "theme": "dark",
+                "auto_save": True,
+                "waveform_auto_open": True
+            },
+            "attempts": {}
+        }
+        
+        # Save to memory
+        USER_SESSIONS[user_key] = user_data
+        
+        # Also save to Firebase if available
+        if FIREBASE_AVAILABLE and db:
+            try:
+                db.collection("users").document(user_id).set(user_data)
+                logger.info(f"User saved to Firebase: {email}")
+            except Exception as firebase_error:
+                logger.error(f"Failed to save user to Firebase: {firebase_error}")
+        
+        return user_data
+        
+    except Exception as e:
+        logger.error(f"Error in get_or_create_user_from_oauth: {e}")
+        raise
 # ==================== CODE EXECUTION ENDPOINTS ====================
 @app.post("/api/run", response_model=Dict)
 async def run_code(request: CodeRequest, background_tasks: BackgroundTasks = None):
@@ -1069,34 +1122,41 @@ async def submit_solution(request: SubmitRequest, background_tasks: BackgroundTa
         if result["success"]:
             response["message"] = "🎉 Correct! Well done!"
             
-            # Check if this is the first correct submission
-            if request.user_id:
-                first_time_solved = False
+            # Check if we have a user to save progress for
+            user_data = None
+            
+            if request.user_id and request.session_token:
+                # Verify session token
+                session = validate_session_token(request.session_token)
                 
-                if FIREBASE_AVAILABLE:
-                    user_doc_ref = db.collection("users").document(request.user_id)
-                    user_doc = user_doc_ref.get()
-                    
-                    if user_doc.exists:
-                        user_data = user_doc.to_dict()
+                if session and session["user_id"] == request.user_id:
+                    # Get user data
+                    user_key = f"user_{request.user_id}"
+                    if user_key in USER_SESSIONS:
+                        user_data = USER_SESSIONS[user_key]
+                        logger.info(f"User authenticated: {user_data.get('email')}")
+                        
+                        # Check if first time solving
                         solved_problems = user_data.get("solved_problems", [])
                         
                         if request.problem_id not in solved_problems:
-                            first_time_solved = True
+                            # First time solving - award points
                             solved_problems.append(request.problem_id)
                             
                             # Update user progress
-                            updates = {
-                                "solved_problems": solved_problems,
-                                "total_points": user_data.get("total_points", 0) + problem.get("points", 10),
-                                f"solutions.{request.problem_id}": {
-                                    "code": request.code,
-                                    "submitted_at": datetime.utcnow().isoformat(),
-                                    "execution_time": execution_time,
-                                    "attempts": user_data.get("attempts", {}).get(request.problem_id, 0) + 1
-                                }
+                            user_data["solved_problems"] = solved_problems
+                            user_data["total_points"] = user_data.get("total_points", 0) + problem.get("points", 10)
+                            
+                            # Save solution
+                            if "solutions" not in user_data:
+                                user_data["solutions"] = {}
+                            
+                            user_data["solutions"][request.problem_id] = {
+                                "code": request.code,
+                                "submitted_at": datetime.utcnow().isoformat(),
+                                "execution_time": execution_time,
+                                "attempts": user_data.get("attempts", {}).get(request.problem_id, {}).get("count", 0) + 1
                             }
-                            user_doc_ref.update(updates)
                             
                             # Check for achievements
                             achievements = check_achievements(user_data, solved_problems)
@@ -1104,13 +1164,36 @@ async def submit_solution(request: SubmitRequest, background_tasks: BackgroundTa
                                 response["achievements"] = achievements
                             
                             response["message"] += f" +{problem.get('points', 10)} points!"
+                            
+                            # Update session
+                            USER_SESSIONS[user_key] = user_data
+                            
+                            # Save to Firebase if available
+                            if FIREBASE_AVAILABLE and db:
+                                try:
+                                    user_ref = db.collection("users").document(request.user_id)
+                                    user_ref.update({
+                                        "solved_problems": solved_problems,
+                                        "total_points": user_data["total_points"],
+                                        f"solutions.{request.problem_id}": user_data["solutions"][request.problem_id],
+                                        "last_login": datetime.utcnow().isoformat()
+                                    })
+                                    logger.info(f"Progress saved to Firebase for: {user_data.get('email')}")
+                                except Exception as firebase_error:
+                                    logger.error(f"Failed to save to Firebase: {firebase_error}")
+                            
                         else:
                             response["message"] = "✅ Already solved! Good reinforcement!"
                 else:
-                    # Demo mode
-                    response["message"] += " (Demo mode - progress not saved)"
-                
-                # Find next recommended problem
+                    logger.warning(f"Invalid session token for user: {request.user_id}")
+                    # Still show success but indicate no progress saved
+                    response["message"] += " (Login session expired - progress not saved)"
+            else:
+                # No user ID or session token
+                response["message"] += " (Login to save progress)"
+            
+            # Find next recommended problem if user is logged in
+            if request.user_id:
                 next_prob = get_next_recommended_problem(request.user_id, request.problem_id)
                 if next_prob:
                     response["next_problem"] = next_prob

@@ -1,47 +1,12 @@
 [
   {
-    "id": "gate_level_logic_gates",
-    "title": "Basic Logic Gates (Gate Level)",
-    "description": "Implement all basic logic gates using gate-level modeling. You must instantiate primitive gates to create: AND, OR, NAND, NOR, NOT (on input b), XOR, and XNOR gates. Use only Verilog gate primitives (and, or, nand, nor, not, xor, xnor). Do not use assign statements or behavioral modeling.",
-    "difficulty": "easy",
-    "category": "basic_gates",
-    "template": "module gate_logic(\n    input a, b,\n    output and_out, or_out, nand_out, nor_out, notb_out, xor_out, xnor_out\n);\n    // Write your code here\n    // Use only gate primitives:\n    // and, or, nand, nor, not, xor, xnor\n    \nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire and_out, or_out, nand_out, nor_out, notb_out, xor_out, xnor_out;\n    integer passed = 0;\n    \n    gate_logic dut (.a(a), .b(b), .and_out(and_out), .or_out(or_out), .nand_out(nand_out), .nor_out(nor_out), .notb_out(notb_out), .xor_out(xnor_out), .xnor_out(xnor_out));\n    \n    initial begin\n        $display(\"Testing Gate Level Logic Gates...\");\n        \n        // Test all input combinations\n        a=0; b=0; #10; \n        if(!(and_out===0 && or_out===0 && nand_out===1 && nor_out===1 && notb_out===1 && xor_out===0 && xnor_out===1)) $display(\"FAIL: 00 input\"); \n        else passed++;\n        \n        a=0; b=1; #10;\n        if(!(and_out===0 && or_out===1 && nand_out===1 && nor_out===0 && notb_out===0 && xor_out===1 && xnor_out===0)) $display(\"FAIL: 01 input\"); \n        else passed++;\n        \n        a=1; b=0; #10;\n        if(!(and_out===0 && or_out===1 && nand_out===1 && nor_out===0 && notb_out===1 && xor_out===1 && xnor_out===0)) $display(\"FAIL: 10 input\"); \n        else passed++;\n        \n        a=1; b=1; #10;\n        if(!(and_out===1 && or_out===1 && nand_out===0 && nor_out===0 && notb_out===0 && xor_out===0 && xnor_out===1)) $display(\"FAIL: 11 input\"); \n        else passed++;\n        \n        if(passed==4) $display(\"PASS: All gate outputs correct\"); \n        else $display(\"FAIL: Some outputs incorrect\");\n        $finish;\n    end\nendmodule",
-    "hint": "Use: and gate1(output, input1, input2); not gate2(output, input); etc.",
-    "examples": [
-      {
-        "input": "a=0, b=1",
-        "output": "and_out=0, or_out=1, nand_out=1, nor_out=0, notb_out=0, xor_out=1, xnor_out=0",
-        "explanation": "For inputs a=0, b=1: AND=0, OR=1, NAND=1, NOR=0, NOT(b)=0, XOR=1, XNOR=0"
-      },
-      {
-        "input": "a=1, b=1",
-        "output": "and_out=1, or_out=1, nand_out=0, nor_out=0, notb_out=0, xor_out=0, xnor_out=1",
-        "explanation": "For inputs a=1, b=1: AND=1, OR=1, NAND=0, NOR=0, NOT(b)=0, XOR=0, XNOR=1"
-      }
-    ],
-    "test_cases": [
-      {
-        "input": {"a": 0, "b": 0},
-        "expected": {"and_out": 0, "or_out": 0, "nand_out": 1, "nor_out": 1, "notb_out": 1, "xor_out": 0, "xnor_out": 1},
-        "description": "All gates with 0,0 inputs"
-      },
-      {
-        "input": {"a": 1, "b": 0},
-        "expected": {"and_out": 0, "or_out": 1, "nand_out": 1, "nor_out": 0, "notb_out": 1, "xor_out": 1, "xnor_out": 0},
-        "description": "All gates with 1,0 inputs"
-      }
-    ],
-    "constraints": ["Use only gate primitives", "No assign statements", "No behavioral modeling"]
-  },
-  {
     "id": "dataflow_logic_gates",
     "title": "Basic Logic Gates (Dataflow)",
     "description": "Implement all basic logic gates using dataflow modeling with continuous assignment statements. Create: AND, OR, NAND, NOR, NOT (on input b), XOR, and XNOR gates. Use only assign statements with Verilog operators (&, |, ~&, ~|, ~, ^, ~^).",
     "difficulty": "easy",
     "category": "basic_gates",
     "template": "module data_flow(\n    input a, b,\n    output and_out, or_out, nand_out, nor_out, notb_out, xor_out, xnor_out\n);\n    // Write your code here\n    // Use only assign statements with operators:\n    // &, |, ~&, ~|, ~, ^, ~^\n    \nendmodule",
-    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire and_out, or_out, nand_out, nor_out, notb_out, xor_out, xnor_out;\n    integer passed = 0;\n    \n    data_flow dut (.a(a), .b(b), .and_out(and_out), .or_out(or_out), .nand_out(nand_out), .nor_out(nor_out), .notb_out(notb_out), .xor_out(xnor_out), .xnor_out(xnor_out));\n    \n    initial begin\n        $display(\"Testing Dataflow Logic Gates...\");\n        \n        a=0; b=0; #10;\n        if(!(and_out===0 && or_out===0 && nand_out===1 && nor_out===1 && notb_out===1 && xor_out===0 && xnor_out===1)) $display(\"FAIL: 00 input\"); \n        else passed++;\n        \n        a=1; b=1; #10;\n        if(!(and_out===1 && or_out===1 && nand_out===0 && nor_out===0 && notb_out===0 && xor_out===0 && xnor_out===1)) $display(\"FAIL: 11 input\"); \n        else passed++;\n        \n        if(passed==2) $display(\"PASS: All gate outputs correct\"); \n        else $display(\"FAIL: Some outputs incorrect\");\n        $finish;\n    end\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb();\n    reg a, b;\n    wire and_out, or_out, nand_out, nor_out, notb_out, xor_out, xnor_out;\n    integer passed = 0;\n    \n    data_flow dut (.a(a), .b(b), .and_out(and_out), .or_out(or_out), .nand_out(nand_out), .nor_out(nor_out), .notb_out(notb_out), .xor_out(xor_out), .xnor_out(xnor_out));\n    \n    initial begin\n        $display(\"Testing Dataflow Logic Gates...\");\n        \n        a=0; b=0; #10;\n        if(!(and_out===0 && or_out===0 && nand_out===1 && nor_out===1 && notb_out===1 && xor_out===0 && xnor_out===1)) $display(\"FAIL: 00 input\"); \n        else passed++;\n        \n        a=1; b=1; #10;\n        if(!(and_out===1 && or_out===1 && nand_out===0 && nor_out===0 && notb_out===0 && xor_out===0 && xnor_out===1)) $display(\"FAIL: 11 input\"); \n        else passed++;\n        \n        if(passed==2) $display(\"PASS: All gate outputs correct\"); \n        else $display(\"FAIL: Some outputs incorrect\");\n        $finish;\n    end\nendmodule",
     "hint": "Use: assign and_out = a & b; assign nand_out = ~(a & b); etc.",
     "examples": [
       {
@@ -1688,5 +1653,1075 @@
       }
     ],
     "constraints": ["Moore FSM", "Detect '101'", "Allow overlapping", "4 states minimum", "Output depends only on state"]
+  },
+  {
+    "id": "bcd_counter_00_99",
+    "title": "BCD Counter (00 to 99)",
+    "description": "Design a BCD counter that counts from 00 to 99 and repeats. The counter has two 4-bit outputs: q1 (units digit, 0-9) and q2 (tens digit, 0-9). When q1 reaches 9, it resets to 0 and increments q2. When both reach 99, they reset to 00.",
+    "difficulty": "medium",
+    "category": "sequential",
+    "template": "module bcd_counter(\n    input clk,\n    input rst,\n    output reg [3:0] q1,\n    output reg [3:0] q2\n);\n    // Write your code here\n    // Implement two-digit BCD counter\n    // q1: units digit (0-9)\n    // q2: tens digit (0-9)\n    // When q1==9, reset q1 and increment q2\n    // When q1==9 && q2==9, reset both to 00\n\nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_bcd_counter;\n    // Inputs\n    reg clk;\n    reg rst;\n    \n    // Outputs\n    wire [3:0] q1;\n    wire [3:0] q2;\n    \n    // Instantiate Unit Under Test\n    bcd_counter uut (\n        .clk(clk),\n        .rst(rst),\n        .q1(q1),\n        .q2(q2)\n    );\n    \n    // Clock generation\n    initial begin\n        clk = 1'b0;\n        forever #5 clk = ~clk;\n    end\n    \n    // Test tasks\n    task reset_task;\n        begin\n            @(negedge clk);\n            rst = 1'b1;\n            @(negedge clk);\n            rst = 1'b0;\n        end\n    endtask\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing BCD Counter (00 to 99)...\");\n        \n        // Initialize\n        rst = 1'b1;\n        #20;\n        reset_task;\n        \n        // Test basic counting\n        $display(\"Starting count from 00...\");\n        repeat(25) @(posedge clk);\n        \n        // Test rollover at 09->10\n        $display(\"Testing rollover at 09->10...\");\n        reset_task;\n        repeat(9) @(posedge clk); // Should be 09\n        @(posedge clk); // Should be 10\n        \n        // Test full rollover 99->00\n        $display(\"Testing full rollover 99->00...\");\n        reset_task;\n        repeat(100) @(posedge clk); // Complete cycle\n        \n        $display(\"Test completed successfully!\");\n        #100 $finish;\n    end\n    \n    // Monitor output\n    initial begin\n        $monitor(\"Time=%0t: q2=%d, q1=%d\", $time, q2, q1);\n    end\nendmodule",
+    "hint": "Use two always blocks: one for q1 (units) that counts 0-9, and another for q2 (tens) that increments only when q1 rolls over from 9 to 0.",
+    "examples": [
+      {
+        "input": "Initial state after reset",
+        "output": "q2=0, q1=0",
+        "explanation": "Counter starts at 00"
+      },
+      {
+        "input": "After 15 clock cycles",
+        "output": "q2=1, q1=5",
+        "explanation": "Counts: 00,01,...,14,15 → q2=1, q1=5"
+      },
+      {
+        "input": "When q1=9 and q2=9",
+        "output": "Next state: q2=0, q1=0",
+        "explanation": "Rolls over from 99 to 00"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"rst": 1, "clk_cycles": 0},
+        "expected": {"q1": 0, "q2": 0},
+        "description": "Reset condition"
+      },
+      {
+        "input": {"rst": 0, "clk_cycles": 25},
+        "expected": {"q1": 5, "q2": 2},
+        "description": "Count 25 cycles from reset"
+      },
+      {
+        "input": {"rst": 0, "clk_cycles": 109},
+        "expected": {"q1": 9, "q2": 0},
+        "description": "Test rollover after full cycle + 9"
+      }
+    ],
+    "constraints": ["4-bit BCD outputs (0-9 only)", "Synchronous reset", "Rollover at 99 to 00"]
+  },
+  {
+    "id": "clock_generator_15ns",
+    "title": "15ns Period Clock Generator",
+    "description": "Generate a clock signal with exactly 15ns time period (66.67 MHz). Clock should have 50% duty cycle, starting from 0 and toggling every 7.5ns.",
+    "difficulty": "easy",
+    "category": "testbench",
+    "template": "module clock_generator_15ns;\n    // Write your code here\n    // Generate clock with 15ns period\n    // Start at 0, toggle every 7.5ns\n    // Use real type for precise timing\n    \nendmodule",
+    "testbench": "`timescale 1ns/100ps\nmodule tb_clock_generator_15ns;\n    // This module tests itself\n    \n    initial begin\n        $display(\"Testing 15ns Clock Generator...\");\n        $display(\"Expected: Clock period = 15ns, Frequency = 66.67MHz\");\n        \n        // Monitor for 10 clock cycles\n        #150;\n        \n        $display(\"\\nTest completed successfully!\");\n        $display(\"Generated 10 complete clock cycles\");\n        $finish;\n    end\n    \n    initial begin\n        $monitor(\"Time=%8.2fns: Clock = %b\", $realtime, clock_generator_15ns.clk);\n    end\nendmodule",
+    "hint": "Use 'real period = 15.0;' and 'forever #(period/2) clk = ~clk;' inside initial block.",
+    "examples": [
+      {
+        "input": "Simulation time 0ns",
+        "output": "clk = 0",
+        "explanation": "Clock starts at logic 0"
+      },
+      {
+        "input": "Simulation time 7.5ns",
+        "output": "clk = 1",
+        "explanation": "First rising edge at half period"
+      },
+      {
+        "input": "Simulation time 15ns",
+        "output": "clk = 0",
+        "explanation": "First falling edge at full period"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"time": 0},
+        "expected": {"clk": 0},
+        "description": "Initial value at time 0"
+      },
+      {
+        "input": {"time": 7.5},
+        "expected": {"clk": 1},
+        "description": "First rising edge"
+      },
+      {
+        "input": {"time": 22.5},
+        "expected": {"clk": 1},
+        "description": "Clock high at 1.5 periods"
+      },
+      {
+        "input": {"time": 30},
+        "expected": {"clk": 0},
+        "description": "Clock low at 2 periods"
+      }
+    ],
+    "constraints": ["Exactly 15ns period", "50% duty cycle", "Start at logic 0", "Use real data type"]
+  },
+  {
+    "id": "jk_ff_2cycle_delay",
+    "title": "JK Flip-Flop with 2-Cycle Input Delay",
+    "description": "Design a JK flip-flop where J and K inputs are delayed by 2 clock cycles before affecting the output. Implement using D flip-flops as delay elements and a JK flip-flop for the final output.",
+    "difficulty": "medium",
+    "category": "sequential",
+    "template": "module jk_ff_delayed(\n    input clock,\n    input rst,\n    input j,\n    input k,\n    output q,\n    output qbar\n);\n    // Write your code here\n    // Create 2-cycle delay for J and K using DFFs\n    // Then feed delayed signals to JK flip-flop\n    \nendmodule\n\n// D Flip-Flop module (use for delay)\nmodule dff_delay(\n    input clock,\n    input rst,\n    input din,\n    output reg q,\n    output qbar\n);\n    // Implement D flip-flop\n    \nendmodule\n\n// JK Flip-Flop module (final stage)\nmodule jkff_final(\n    input clock,\n    input rst,\n    input j,\n    input k,\n    output reg q,\n    output qbar\n);\n    // Implement JK flip-flop\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_jk_ff_delayed;\n    // Inputs\n    reg clock;\n    reg rst;\n    reg j;\n    reg k;\n    \n    // Outputs\n    wire q;\n    wire qbar;\n    \n    // Instantiate Unit Under Test\n    jk_ff_delayed uut (\n        .clock(clock),\n        .rst(rst),\n        .j(j),\n        .k(k),\n        .q(q),\n        .qbar(qbar)\n    );\n    \n    // Clock generation\n    initial begin\n        clock = 1'b0;\n        forever #5 clock = ~clock;\n    end\n    \n    // Test tasks\n    task reset_task;\n        begin\n            @(negedge clock);\n            rst = 1'b1;\n            @(negedge clock);\n            rst = 1'b0;\n        end\n    endtask\n    \n    task apply_input(input m, n);\n        begin\n            @(negedge clock);\n            j = m;\n            k = n;\n        end\n    endtask\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing JK Flip-Flop with 2-cycle delay...\");\n        \n        // Initialize and reset\n        reset_task;\n        #10;\n        \n        // Test all JK combinations with delay verification\n        $display(\"\\nTest 1: JK=11 (Toggle) with delay...\");\n        apply_input(1, 1);\n        repeat(3) @(posedge clock); // Wait for delay + effect\n        \n        $display(\"\\nTest 2: JK=10 (Set) with delay...\");\n        reset_task;\n        apply_input(1, 0);\n        repeat(3) @(posedge clock);\n        \n        $display(\"\\nTest 3: JK=01 (Reset) with delay...\");\n        reset_task;\n        apply_input(0, 1);\n        repeat(3) @(posedge clock);\n        \n        $display(\"\\nTest 4: JK=00 (Hold) with delay...\");\n        reset_task;\n        apply_input(0, 0);\n        repeat(3) @(posedge clock);\n        \n        $display(\"\\nTest completed successfully!\");\n        #100 $finish;\n    end\n    \n    // Monitor output\n    initial begin\n        $monitor(\"Time=%0t: J=%b, K=%b, Q=%b, Qbar=%b\", \n                $time, j, k, q, qbar);\n    end\nendmodule",
+    "hint": "Create two DFFs in series for both J and K inputs. First DFF output goes to second DFF input. Second DFF output goes to JK flip-flop.",
+    "examples": [
+      {
+        "input": "Apply J=1,K=1 at time T, initial Q=0",
+        "output": "Q toggles to 1 at T+2 cycles",
+        "explanation": "Toggle operation delayed by 2 clock cycles"
+      },
+      {
+        "input": "Apply J=1,K=0 at time T, initial Q=0",
+        "output": "Q sets to 1 at T+2 cycles",
+        "explanation": "Set operation with 2-cycle pipeline delay"
+      },
+      {
+        "input": "Apply J=0,K=1 at time T, Q=1",
+        "output": "Q resets to 0 at T+2 cycles",
+        "explanation": "Reset operation delayed by 2 cycles"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"j": 1, "k": 1, "initial_q": 0, "delay_cycles": 2},
+        "expected": {"q": 1},
+        "description": "Toggle with 2-cycle delay"
+      },
+      {
+        "input": {"j": 1, "k": 0, "initial_q": 0, "delay_cycles": 2},
+        "expected": {"q": 1},
+        "description": "Set with 2-cycle delay"
+      },
+      {
+        "input": {"j": 0, "k": 0, "initial_q": 1, "delay_cycles": 2},
+        "expected": {"q": 1},
+        "description": "Hold state maintained through delay"
+      }
+    ],
+    "constraints": ["2-cycle delay for both J and K", "Use DFFs for delay pipeline", "Synchronous reset", "Final JK flip-flop output"]
+  },
+  {
+    "id": "updown_counter_8bit",
+    "title": "8-bit Up/Down Counter with Select",
+    "description": "Design an 8-bit up/down counter. When sel=1, count up from 0 to 8 then wrap to 0. When sel=0, count down from 8 to 0 then wrap to 8. Reset is active low (resetn).",
+    "difficulty": "medium",
+    "category": "sequential",
+    "template": "module updown_counter_8bit(\n    input clock,\n    input resetn,  // Active low reset\n    input sel,     // 1=up, 0=down\n    output reg [7:0] out\n);\n    // Write your code here\n    // sel=1: count up 0->1->2->...->8->0\n    // sel=0: count down 8->7->6->...->0->8\n    // resetn=0: reset to 0\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_updown_counter_8bit;\n    // Inputs\n    reg clock;\n    reg resetn;\n    reg sel;\n    \n    // Outputs\n    wire [7:0] out;\n    \n    // Instantiate Unit Under Test\n    updown_counter_8bit uut (\n        .clock(clock),\n        .resetn(resetn),\n        .sel(sel),\n        .out(out)\n    );\n    \n    // Clock generation\n    initial begin\n        clock = 1'b0;\n        forever #5 clock = ~clock;\n    end\n    \n    // Test tasks\n    task reset_task;\n        begin\n            @(negedge clock);\n            resetn = 1'b0;\n            @(negedge clock);\n            resetn = 1'b1;\n        end\n    endtask\n    \n    task select_mode(input mode);\n        begin\n            @(negedge clock);\n            sel = mode;\n        end\n    endtask\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing 8-bit Up/Down Counter...\");\n        \n        // Test 1: Reset\n        $display(\"\\nTest 1: Reset functionality...\");\n        reset_task;\n        if(out !== 8'd0) $error(\"Reset failed\");\n        else $display(\"Reset PASS: out = %0d\", out);\n        \n        // Test 2: Up counting\n        $display(\"\\nTest 2: Up counting (sel=1)...\");\n        select_mode(1);\n        repeat(10) @(posedge clock);\n        \n        // Test 3: Down counting\n        $display(\"\\nTest 3: Down counting (sel=0)...\");\n        select_mode(0);\n        repeat(10) @(posedge clock);\n        \n        // Test 4: Wrap-around up (8->0)\n        $display(\"\\nTest 4: Wrap-around up counting...\");\n        reset_task;\n        select_mode(1);\n        repeat(9) @(posedge clock); // Should reach 8\n        @(posedge clock); // Should wrap to 0\n        \n        // Test 5: Wrap-around down (0->8)\n        $display(\"\\nTest 5: Wrap-around down counting...\");\n        reset_task;\n        select_mode(0);\n        // Set to 8 first\n        reset_task;\n        uut.out = 8'd8; // Force initial value\n        repeat(9) @(posedge clock); // Should reach 0\n        @(posedge clock); // Should wrap to 8\n        \n        $display(\"\\nAll tests completed successfully!\");\n        #100 $finish;\n    end\n    \n    // Monitor output\n    initial begin\n        $monitor(\"Time=%0t: sel=%b, out=%0d\", $time, sel, out);\n    end\nendmodule",
+    "hint": "Check if sel=1 and out<8 for increment, or sel=0 and out>0 for decrement. Handle wrap-around cases separately.",
+    "examples": [
+      {
+        "input": "resetn=1, sel=1, out=5",
+        "output": "next out=6",
+        "explanation": "Up count increment when sel=1 and out<8"
+      },
+      {
+        "input": "resetn=1, sel=0, out=3",
+        "output": "next out=2",
+        "explanation": "Down count decrement when sel=0 and out>0"
+      },
+      {
+        "input": "resetn=1, sel=1, out=8",
+        "output": "next out=0",
+        "explanation": "Wrap-around up: 8→0"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"resetn": 1, "sel": 1, "initial": 0},
+        "expected": {"next": 1},
+        "description": "Up count from 0"
+      },
+      {
+        "input": {"resetn": 1, "sel": 0, "initial": 8},
+        "expected": {"next": 7},
+        "description": "Down count from 8"
+      },
+      {
+        "input": {"resetn": 0, "sel": 1, "initial": 5},
+        "expected": {"next": 0},
+        "description": "Reset overrides counting"
+      },
+      {
+        "input": {"resetn": 1, "sel": 1, "initial": 8},
+        "expected": {"next": 0},
+        "description": "Up count wrap-around"
+      }
+    ],
+    "constraints": ["8-bit output", "Up count: 0→8→0", "Down count: 8→0→8", "Active low reset"]
+  },
+  {
+    "id": "counter_even_up_odd_down",
+    "title": "Counter with Even/Odd Counting Patterns",
+    "description": "Design a counter with special increment/decrement rules based on current value parity. When sel=1 (up count): if current value is even, increment by 2; if odd, increment by 1. When sel=0 (down count): if current value is even, decrement by 1; if odd, decrement by 2.",
+    "difficulty": "medium",
+    "category": "sequential",
+    "template": "module counter_even_odd_pattern(\n    input clock,\n    input sel,     // 1=up, 0=down\n    input rst,\n    output reg [3:0] dout\n);\n    // Write your code here\n    // sel=1: up count\n    //   if dout even: dout <= dout + 2\n    //   if dout odd:  dout <= dout + 1\n    // sel=0: down count\n    //   if dout even: dout <= dout - 1\n    //   if dout odd:  dout <= dout - 2\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_counter_even_odd_pattern;\n    // Inputs\n    reg clock;\n    reg sel;\n    reg rst;\n    \n    // Outputs\n    wire [3:0] dout;\n    \n    // Instantiate Unit Under Test\n    counter_even_odd_pattern uut (\n        .clock(clock),\n        .sel(sel),\n        .rst(rst),\n        .dout(dout)\n    );\n    \n    // Clock generation\n    initial begin\n        clock = 1'b0;\n        forever #5 clock = ~clock;\n    end\n    \n    // Test tasks\n    task reset_task;\n        begin\n            @(negedge clock);\n            rst = 1'b1;\n            @(negedge clock);\n            rst = 1'b0;\n        end\n    endtask\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing Counter with Even/Odd Patterns...\");\n        \n        // Test 1: Reset\n        $display(\"\\nTest 1: Reset...\");\n        reset_task;\n        if(dout !== 4'd0) $error(\"Reset failed\");\n        else $display(\"Reset PASS: dout = %0d\", dout);\n        \n        // Test 2: Up count from even (0)\n        $display(\"\\nTest 2: Up count from even (0)...\");\n        sel = 1'b1;\n        @(posedge clock); // 0→2 (even +2)\n        if(dout !== 4'd2) $error(\"Up from even 0 failed\");\n        \n        // Test 3: Up count from even (2)\n        @(posedge clock); // 2→4 (even +2)\n        if(dout !== 4'd4) $error(\"Up from even 2 failed\");\n        \n        // Test 4: Up count from odd (make odd first)\n        $display(\"\\nTest 3: Up count from odd...\");\n        reset_task;\n        sel = 1'b1;\n        @(posedge clock); // 0→2 (even)\n        // Force to odd for test\n        uut.dout = 4'd3;\n        @(posedge clock); // 3→4 (odd +1)\n        if(dout !== 4'd4) $error(\"Up from odd 3 failed\");\n        \n        // Test 5: Down count from even\n        $display(\"\\nTest 4: Down count from even...\");\n        reset_task;\n        sel = 1'b0;\n        uut.dout = 4'd4; // Start from even\n        @(posedge clock); // 4→3 (even -1)\n        if(dout !== 4'd3) $error(\"Down from even 4 failed\");\n        \n        // Test 6: Down count from odd\n        $display(\"\\nTest 5: Down count from odd...\");\n        reset_task;\n        sel = 1'b0;\n        uut.dout = 4'd3; // Start from odd\n        @(posedge clock); // 3→1 (odd -2)\n        if(dout !== 4'd1) $error(\"Down from odd 3 failed\");\n        \n        $display(\"\\nAll tests completed successfully!\");\n        #100 $finish;\n    end\n    \n    // Monitor output\n    initial begin\n        $monitor(\"Time=%0t: clock=%b, sel=%b, dout=%0d\", \n                $time, clock, sel, dout);\n    end\nendmodule",
+    "hint": "Use dout%2 to check parity. Even numbers have dout%2==0, odd have dout%2==1.",
+    "examples": [
+      {
+        "input": "sel=1, dout=0 (even)",
+        "output": "next dout=2",
+        "explanation": "Up count: even number increments by 2"
+      },
+      {
+        "input": "sel=1, dout=3 (odd)",
+        "output": "next dout=4",
+        "explanation": "Up count: odd number increments by 1"
+      },
+      {
+        "input": "sel=0, dout=6 (even)",
+        "output": "next dout=5",
+        "explanation": "Down count: even number decrements by 1"
+      },
+      {
+        "input": "sel=0, dout=5 (odd)",
+        "output": "next dout=3",
+        "explanation": "Down count: odd number decrements by 2"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"sel": 1, "initial": 0, "parity": "even"},
+        "expected": {"next": 2},
+        "description": "Up count from even 0"
+      },
+      {
+        "input": {"sel": 1, "initial": 3, "parity": "odd"},
+        "expected": {"next": 4},
+        "description": "Up count from odd 3"
+      },
+      {
+        "input": {"sel": 0, "initial": 4, "parity": "even"},
+        "expected": {"next": 3},
+        "description": "Down count from even 4"
+      },
+      {
+        "input": {"sel": 0, "initial": 7, "parity": "odd"},
+        "expected": {"next": 5},
+        "description": "Down count from odd 7"
+      }
+    ],
+    "constraints": ["4-bit output", "Parity-based increment/decrement", "Even: +2/-1, Odd: +1/-2", "Synchronous reset"]
+  },
+  {
+    "id": "comparator_using_2to4_decoder",
+    "title": "2-bit Comparator Using 2-to-4 Decoders",
+    "description": "Implement a 2-bit magnitude comparator using two 2-to-4 decoders. Compare A(A1A0) and B(B1B0) to produce less (A<B), greater (A>B), and equal (A=B) outputs using combinational logic on decoder outputs.",
+    "difficulty": "hard",
+    "category": "combinational",
+    "template": "module decoder_2to4(\n    input a,\n    input b,\n    output reg [3:0] y\n);\n    // Write your code here\n    // 2-to-4 decoder implementation\n    // Inputs: a,b (2-bit)\n    // Output: y[3:0] one-hot encoded\n    // Truth table: 00->0001, 01->0010, 10->0100, 11->1000\n    \nendmodule\n\nmodule comparator_2bit_decoder(\n    input a1, a0, b1, b0,\n    output less,\n    output greater,\n    output equal\n);\n    // Write your code here\n    // Use two 2-to-4 decoders\n    // Compare decoder outputs to generate comparison results\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_comparator_2bit_decoder;\n    // Inputs\n    reg a1, a0, b1, b0;\n    \n    // Outputs\n    wire less;\n    wire greater;\n    wire equal;\n    \n    // Instantiate Unit Under Test\n    comparator_2bit_decoder uut (\n        .a1(a1),\n        .a0(a0),\n        .b1(b1),\n        .b0(b0),\n        .less(less),\n        .greater(greater),\n        .equal(equal)\n    );\n    \n    // Helper function to compare\n    function string get_comparison;\n        input l, g, e;\n        begin\n            if(e) get_comparison = \"Equal\";\n            else if(l) get_comparison = \"Less\";\n            else if(g) get_comparison = \"Greater\";\n            else get_comparison = \"ERROR\";\n        end\n    endfunction\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing 2-bit Comparator using 2-to-4 Decoders...\");\n        $display(\"A = {a1,a0}, B = {b1,b0}\");\n        \n        // Test all 16 combinations\n        for(int i = 0; i < 16; i = i + 1) begin\n            {a1, a0, b1, b0} = i;\n            #10;\n            \n            // Calculate expected values\n            reg [1:0] A = {a1, a0};\n            reg [1:0] B = {b1, b0};\n            reg expected_less = (A < B);\n            reg expected_greater = (A > B);\n            reg expected_equal = (A == B);\n            \n            // Verify\n            if(less !== expected_less || \n               greater !== expected_greater || \n               equal !== expected_equal) begin\n                $error(\"Test failed for A=%b%b (%0d), B=%b%b (%0d)\", \n                      a1, a0, A, b1, b0, B);\n                $display(\"  Expected: Less=%b, Greater=%b, Equal=%b\",\n                        expected_less, expected_greater, expected_equal);\n                $display(\"  Got:      Less=%b, Greater=%b, Equal=%b\",\n                        less, greater, equal);\n            end\n            else begin\n                $display(\"PASS: A=%0d, B=%0d -> %s\", \n                        A, B, get_comparison(less, greater, equal));\n            end\n        end\n        \n        $display(\"\\nAll 16 test cases completed!\");\n        $finish;\n    end\nendmodule",
+    "hint": "Decoder converts 2-bit input to one-hot 4-bit output. Comparator outputs are logical OR of specific decoder output combinations.",
+    "examples": [
+      {
+        "input": "A=01 (1), B=10 (2)",
+        "output": "less=1, greater=0, equal=0",
+        "explanation": "A(1) < B(2) → less output active"
+      },
+      {
+        "input": "A=11 (3), B=00 (0)",
+        "output": "less=0, greater=1, equal=0",
+        "explanation": "A(3) > B(0) → greater output active"
+      },
+      {
+        "input": "A=10 (2), B=10 (2)",
+        "output": "less=0, greater=0, equal=1",
+        "explanation": "A equals B → equal output active"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"A": "2'b01", "B": "2'b10"},
+        "expected": {"less": 1, "greater": 0, "equal": 0},
+        "description": "A(1) < B(2)"
+      },
+      {
+        "input": {"A": "2'b11", "B": "2'b00"},
+        "expected": {"less": 0, "greater": 1, "equal": 0},
+        "description": "A(3) > B(0)"
+      },
+      {
+        "input": {"A": "2'b10", "B": "2'b10"},
+        "expected": {"less": 0, "greater": 0, "equal": 1},
+        "description": "A(2) = B(2)"
+      },
+      {
+        "input": {"A": "2'b00", "B": "2'b11"},
+        "expected": {"less": 1, "greater": 0, "equal": 0},
+        "description": "A(0) < B(3)"
+      }
+    ],
+    "constraints": ["Use 2-to-4 decoders", "Combinational logic only", "3 outputs: less, greater, equal", "No direct comparison operators"]
+  },
+  {
+    "id": "sequence_detector_00_11_moore",
+    "title": "Sequence Detector for '00' or '11' (Moore Machine)",
+    "description": "Design a Moore machine sequence detector that outputs 1 when either '00' or '11' sequence is detected, 0 otherwise. The detector should recognize overlapping sequences. Use 7 states (s0-s6) as per state diagram.",
+    "difficulty": "hard",
+    "category": "sequential",
+    "template": "module seq_detector_moore_00_11(\n    input clk,\n    input rst,\n    input in,\n    output y\n);\n    // Write your code here\n    // Detect sequences '00' OR '11'\n    // Moore machine: output depends only on state\n    // States: s0-s6\n    // Output y=1 in states where sequence detected\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_seq_detector_moore_00_11;\n    // Inputs\n    reg clk;\n    reg rst;\n    reg in;\n    \n    // Outputs\n    wire y;\n    \n    // Instantiate Unit Under Test\n    seq_detector_moore_00_11 uut (\n        .clk(clk),\n        .rst(rst),\n        .in(in),\n        .y(y)\n    );\n    \n    // Clock generation\n    initial begin\n        clk = 1'b0;\n        forever #5 clk = ~clk;\n    end\n    \n    // Test tasks\n    task reset_task;\n        begin\n            @(negedge clk);\n            rst = 1'b1;\n            @(negedge clk);\n            rst = 1'b0;\n        end\n    endtask\n    \n    task apply_input_seq;\n        input [3:0] seq;\n        input integer len;\n        begin\n            for(int i = 0; i < len; i = i + 1) begin\n                @(negedge clk);\n                in = seq[i];\n            end\n        end\n    endtask\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing Moore Sequence Detector for '00' or '11'...\");\n        \n        // Test 1: Reset\n        $display(\"\\nTest 1: Reset...\");\n        reset_task;\n        if(y !== 1'b0) $error(\"Reset output should be 0\");\n        \n        // Test 2: Detect '00'\n        $display(\"\\nTest 2: Detect '00' sequence...\");\n        reset_task;\n        apply_input_seq(4'b0011, 2); // Send '00'\n        if(y !== 1'b1) $error(\"Should detect '00'\");\n        else $display(\"PASS: '00' detected\");\n        \n        // Test 3: Detect '11'\n        $display(\"\\nTest 3: Detect '11' sequence...\");\n        reset_task;\n        apply_input_seq(4'b1100, 2); // Send '11'\n        if(y !== 1'b1) $error(\"Should detect '11'\");\n        else $display(\"PASS: '11' detected\");\n        \n        // Test 4: No detection for '01'\n        $display(\"\\nTest 4: No detection for '01'...\");\n        reset_task;\n        apply_input_seq(4'b0101, 2); // Send '01'\n        if(y !== 1'b0) $error(\"Should not detect '01'\");\n        else $display(\"PASS: '01' correctly not detected\");\n        \n        // Test 5: Overlapping sequences '0011'\n        $display(\"\\nTest 5: Overlapping sequences '0011'...\");\n        reset_task;\n        apply_input_seq(4'b0011, 4); // Send '0011'\n        // Should detect '00' at bit 2, '11' at bit 4\n        \n        // Test 6: Long sequence with mixed patterns\n        $display(\"\\nTest 6: Mixed sequence '01001101'...\");\n        reset_task;\n        apply_input_seq(8'b01001101, 8);\n        \n        $display(\"\\nAll tests completed!\");\n        #100 $finish;\n    end\n    \n    // Monitor output\n    initial begin\n        $monitor(\"Time=%0t: in=%b, y=%b\", $time, in, y);\n    end\nendmodule",
+    "hint": "States s5 and s6 are detection states. Transition to s5 after '00', to s6 after '11'. Output y=1 when in s5 or s6.",
+    "examples": [
+      {
+        "input": "Sequence: 0,0",
+        "output": "y=1 after second 0",
+        "explanation": "Detects '00' sequence"
+      },
+      {
+        "input": "Sequence: 1,1",
+        "output": "y=1 after second 1",
+        "explanation": "Detects '11' sequence"
+      },
+      {
+        "input": "Sequence: 0,0,1,1",
+        "output": "y=1 at bits 2 and 4",
+        "explanation": "Detects overlapping '00' and '11'"
+      },
+      {
+        "input": "Sequence: 0,1,0,1",
+        "output": "y=0 always",
+        "explanation": "No '00' or '11' patterns"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"sequence": "00"},
+        "expected": {"detect": 1},
+        "description": "Detect '00' sequence"
+      },
+      {
+        "input": {"sequence": "11"},
+        "expected": {"detect": 1},
+        "description": "Detect '11' sequence"
+      },
+      {
+        "input": {"sequence": "01"},
+        "expected": {"detect": 0},
+        "description": "No detection for '01'"
+      },
+      {
+        "input": {"sequence": "0011"},
+        "expected": {"detect_points": [2, 4]},
+        "description": "Detect overlapping sequences at bits 2 and 4"
+      }
+    ],
+    "constraints": ["Moore machine (output depends only on state)", "7 states (s0-s6)", "Detect '00' OR '11'", "Overlapping sequences allowed"]
+  },
+  {
+    "id": "dual_port_ram_parameterized",
+    "title": "Parameterized Dual-Port RAM (64x16 and 16x64)",
+    "description": "Design a parameterized dual-port synchronous static RAM. Base module: 64 addresses × 16-bit data. Support simultaneous read/write with error detection. Create second module with parameter override: 16 addresses × 64-bit data.",
+    "difficulty": "hard",
+    "category": "memory",
+    "template": "module dual_port_ram #(\n    parameter ADDR_WIDTH = 6,\n    parameter DATA_WIDTH = 16,\n    parameter MEM_DEPTH = 64\n) (\n    input clock,\n    input clear,\n    input wr_enb,\n    input rd_enb,\n    input [ADDR_WIDTH-1:0] addr,\n    input [DATA_WIDTH-1:0] din,\n    output reg [DATA_WIDTH-1:0] dout,\n    output reg error\n);\n    // Write your code here\n    // Memory declaration\n    // Synchronous operations\n    // Error when both read and write enabled\n    // Clear initializes memory\n    \nendmodule\n\n// Specific instance: 16x64 RAM\nmodule ram_16x64(\n    input clock,\n    input clear,\n    input wr_enb,\n    input rd_enb,\n    input [3:0] addr,      // 4-bit address (16 locations)\n    input [63:0] din,      // 64-bit data input\n    output reg [63:0] dout, // 64-bit data output\n    output reg error\n);\n    // Instantiate with parameter override\n    // ADDR_WIDTH=4, DATA_WIDTH=64, MEM_DEPTH=16\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_dual_port_ram;\n    // Test both configurations\n    \n    // --- Test 64x16 RAM ---\n    reg clock;\n    reg clear;\n    reg wr_enb_64x16;\n    reg rd_enb_64x16;\n    reg [5:0] addr_64x16;\n    reg [15:0] din_64x16;\n    wire [15:0] dout_64x16;\n    wire error_64x16;\n    \n    dual_port_ram #(\n        .ADDR_WIDTH(6),\n        .DATA_WIDTH(16),\n        .MEM_DEPTH(64)\n    ) ram64x16 (\n        .clock(clock),\n        .clear(clear),\n        .wr_enb(wr_enb_64x16),\n        .rd_enb(rd_enb_64x16),\n        .addr(addr_64x16),\n        .din(din_64x16),\n        .dout(dout_64x16),\n        .error(error_64x16)\n    );\n    \n    // --- Test 16x64 RAM ---\n    reg wr_enb_16x64;\n    reg rd_enb_16x64;\n    reg [3:0] addr_16x64;\n    reg [63:0] din_16x64;\n    wire [63:0] dout_16x64;\n    wire error_16x64;\n    \n    dual_port_ram #(\n        .ADDR_WIDTH(4),\n        .DATA_WIDTH(64),\n        .MEM_DEPTH(16)\n    ) ram16x64 (\n        .clock(clock),\n        .clear(clear),\n        .wr_enb(wr_enb_16x64),\n        .rd_enb(rd_enb_16x64),\n        .addr(addr_16x64),\n        .din(din_16x64),\n        .dout(dout_16x64),\n        .error(error_16x64)\n    );\n    \n    // Clock generation\n    initial begin\n        clock = 1'b0;\n        forever #5 clock = ~clock;\n    end\n    \n    // Test tasks\n    task clear_memory;\n        begin\n            clear = 1'b1;\n            #20;\n            clear = 1'b0;\n        end\n    endtask\n    \n    task write_64x16;\n        input [5:0] address;\n        input [15:0] data;\n        begin\n            @(negedge clock);\n            wr_enb_64x16 = 1'b1;\n            rd_enb_64x16 = 1'b0;\n            addr_64x16 = address;\n            din_64x16 = data;\n            @(negedge clock);\n            wr_enb_64x16 = 1'b0;\n        end\n    endtask\n    \n    task read_64x16;\n        input [5:0] address;\n        begin\n            @(negedge clock);\n            wr_enb_64x16 = 1'b0;\n            rd_enb_64x16 = 1'b1;\n            addr_64x16 = address;\n            @(negedge clock);\n        end\n    endtask\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing Parameterized Dual-Port RAM...\");\n        \n        // Test 64x16 RAM\n        $display(\"\\n=== Testing 64x16 Configuration ===\");\n        clear_memory;\n        \n        // Write test data\n        write_64x16(6'd10, 16'hABCD);\n        write_64x16(6'd20, 16'h1234);\n        \n        // Read back\n        read_64x16(6'd10);\n        if(dout_64x16 !== 16'hABCD) \n            $error(\"64x16 Read mismatch at addr 10\");\n        else\n            $display(\"PASS: 64x16 read correct at addr 10\");\n        \n        read_64x16(6'd20);\n        if(dout_64x16 !== 16'h1234)\n            $error(\"64x16 Read mismatch at addr 20\");\n        else\n            $display(\"PASS: 64x16 read correct at addr 20\");\n        \n        // Test error condition\n        $display(\"\\nTesting error condition (simultaneous R/W)...\");\n        @(negedge clock);\n        wr_enb_64x16 = 1'b1;\n        rd_enb_64x16 = 1'b1;\n        @(negedge clock);\n        if(error_64x16 !== 1'b1)\n            $error(\"Error signal not asserted for R/W conflict\");\n        else\n            $display(\"PASS: Error detected for simultaneous R/W\");\n        \n        // Test 16x64 RAM\n        $display(\"\\n=== Testing 16x64 Configuration ===\");\n        clear_memory;\n        \n        // Write to 16x64\n        @(negedge clock);\n        wr_enb_16x64 = 1'b1;\n        rd_enb_16x64 = 1'b0;\n        addr_16x64 = 4'd5;\n        din_16x64 = 64'h0123_4567_89AB_CDEF;\n        @(negedge clock);\n        wr_enb_16x64 = 1'b0;\n        \n        // Read from 16x64\n        @(negedge clock);\n        wr_enb_16x64 = 1'b0;\n        rd_enb_16x64 = 1'b1;\n        addr_16x64 = 4'd5;\n        @(negedge clock);\n        \n        if(dout_16x64 !== 64'h0123_4567_89AB_CDEF)\n            $error(\"16x64 Read mismatch\");\n        else\n            $display(\"PASS: 16x64 read correct\");\n        \n        $display(\"\\nAll tests completed successfully!\");\n        #100 $finish;\n    end\n    \n    // Monitor\n    initial begin\n        $monitor(\"Time=%0t: 64x16[dout]=%h, 16x64[dout]=%h, error_64x16=%b, error_16x64=%b\",\n                $time, dout_64x16, dout_16x64, error_64x16, error_16x64);\n    end\nendmodule",
+    "hint": "Memory declaration: reg [DATA_WIDTH-1:0] mem [0:MEM_DEPTH-1]; Clear should initialize all locations. Error when (wr_enb && rd_enb).",
+    "examples": [
+      {
+        "input": "64x16: Write 0xABCD to address 10",
+        "output": "Read address 10 returns 0xABCD",
+        "explanation": "Basic read/write operation"
+      },
+      {
+        "input": "16x64: Write 64-bit pattern to address 5",
+        "output": "Read address 5 returns same pattern",
+        "explanation": "Parameter override changes data width"
+      },
+      {
+        "input": "wr_enb=1 and rd_enb=1 simultaneously",
+        "output": "error=1",
+        "explanation": "Error detection for read/write conflict"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"config": "64x16", "addr": 10, "data": "16'h1234"},
+        "expected": {"read_data": "16'h1234", "error": 0},
+        "description": "Basic 64x16 read/write"
+      },
+      {
+        "input": {"config": "16x64", "addr": 5, "data": "64'hFEDCBA9876543210"},
+        "expected": {"read_data": "64'hFEDCBA9876543210", "error": 0},
+        "description": "Basic 16x64 read/write"
+      },
+      {
+        "input": {"config": "64x16", "wr_enb": 1, "rd_enb": 1},
+        "expected": {"error": 1},
+        "description": "Error on simultaneous read/write"
+      },
+      {
+        "input": {"config": "any", "clear": 1},
+        "expected": {"dout": 0, "error": 0},
+        "description": "Clear initializes memory and outputs"
+      }
+    ],
+    "constraints": ["Parameterized design", "Synchronous operation", "Error detection", "Clear initializes memory", "Dual-port support"]
+  },
+  {
+    "id": "sequence_detector_11011_mealy",
+    "title": "Sequence Detector for '11011' (Mealy Machine)",
+    "description": "Design a Mealy machine sequence detector for pattern '11011'. Output y=1 when the sequence is detected, 0 otherwise. Mealy machine means output depends on current state AND current input. Use 5 states (s0-s4).",
+    "difficulty": "hard",
+    "category": "sequential",
+    "template": "module seq_detector_mealy_11011(\n    input clk,\n    input in,\n    input rst,\n    output reg y\n);\n    // Write your code here\n    // Detect sequence '11011'\n    // Mealy machine: output depends on state AND input\n    // States: s0(start), s1(got 1), s2(got 11), s3(got 110), s4(got 1101)\n    // Output=1 when in state s4 AND input=1\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_seq_detector_mealy_11011;\n    // Inputs\n    reg clk;\n    reg in;\n    reg rst;\n    \n    // Outputs\n    wire y;\n    \n    // Instantiate Unit Under Test\n    seq_detector_mealy_11011 uut (\n        .clk(clk),\n        .in(in),\n        .rst(rst),\n        .y(y)\n    );\n    \n    // Clock generation\n    initial begin\n        clk = 1'b0;\n        forever #5 clk = ~clk;\n    end\n    \n    // Test tasks\n    task reset_task;\n        begin\n            @(negedge clk);\n            rst = 1'b1;\n            @(negedge clk);\n            rst = 1'b0;\n        end\n    endtask\n    \n    task apply_input_seq;\n        input [7:0] seq;\n        input integer len;\n        begin\n            for(int i = 0; i < len; i = i + 1) begin\n                @(negedge clk);\n                in = seq[i];\n            end\n        end\n    endtask\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing Mealy Sequence Detector for '11011'...\");\n        \n        // Test 1: Reset\n        $display(\"\\nTest 1: Reset...\");\n        reset_task;\n        if(y !== 1'b0) $error(\"Reset output should be 0\");\n        \n        // Test 2: Exact sequence '11011'\n        $display(\"\\nTest 2: Exact sequence '11011'...\");\n        reset_task;\n        apply_input_seq(8'b11011000, 5);\n        // Output should be 1 on last bit (5th)\n        \n        // Test 3: Broken sequence '11010'\n        $display(\"\\nTest 3: Broken sequence '11010'...\");\n        reset_task;\n        apply_input_seq(8'b11010000, 5);\n        // Output should be 0\n        \n        // Test 4: Overlapping sequences '11011011'\n        $display(\"\\nTest 4: Overlapping sequences '11011011'...\");\n        reset_task;\n        apply_input_seq(8'b11011011, 8);\n        // Should detect at positions 5 and 8\n        \n        // Test 5: Random sequence\n        $display(\"\\nTest 5: Random sequence...\");\n        reset_task;\n        repeat(5) begin\n            apply_input_seq({$random} % 256, 8);\n        end\n        \n        $display(\"\\nAll tests completed!\");\n        #100 $finish;\n    end\n    \n    // Monitor output\n    initial begin\n        $monitor(\"Time=%0t: in=%b, y=%b\", $time, in, y);\n    end\nendmodule",
+    "hint": "Output y=1 only when in state s4 (got 1101) AND current input=1. Otherwise y=0. This is characteristic of Mealy machines.",
+    "examples": [
+      {
+        "input": "Sequence: 1,1,0,1,1",
+        "output": "y=1 on 5th bit",
+        "explanation": "Complete sequence detected on last bit"
+      },
+      {
+        "input": "Sequence: 1,1,0,1,0",
+        "output": "y=0 on 5th bit",
+        "explanation": "Sequence broken at last bit, no detection"
+      },
+      {
+        "input": "Sequence: 1,1,0,1,1,0,1,1",
+        "output": "y=1 on bits 5 and 8",
+        "explanation": "Overlapping sequences detected"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"sequence": "11011"},
+        "expected": {"detect": 1, "detect_bit": 5},
+        "description": "Exact sequence detection on 5th bit"
+      },
+      {
+        "input": {"sequence": "11010"},
+        "expected": {"detect": 0},
+        "description": "Broken sequence, no detection"
+      },
+      {
+        "input": {"sequence": "11011011"},
+        "expected": {"detect_points": [5, 8]},
+        "description": "Two detections in overlapping sequence"
+      },
+      {
+        "input": {"sequence": "01011"},
+        "expected": {"detect": 0},
+        "description": "Wrong starting bit, no detection"
+      }
+    ],
+    "constraints": ["Mealy machine (output depends on state and input)", "5 states (s0-s4)", "Detect '11011'", "Overlapping sequences allowed"]
+  },
+  {
+    "id": "parameterized_n_to_1_mux",
+    "title": "Parameterized N-to-1 Multiplexer",
+    "description": "Design a parameterized N-to-1 multiplexer. Generic module takes SEL_WIDTH and DATA_WIDTH parameters. Create specific instance: 16-to-1 mux with 4 select bits and 16 data inputs.",
+    "difficulty": "medium",
+    "category": "combinational",
+    "template": "module nxmux #(\n    parameter SEL_WIDTH = 2,\n    parameter DATA_WIDTH = 4\n) (\n    input [SEL_WIDTH-1:0] s,\n    input [DATA_WIDTH-1:0] din,\n    output reg dout\n);\n    // Write your code here\n    // N-to-1 multiplexer\n    // Select one bit from din based on s\n    // Use for loop or case statement\n    \nendmodule\n\n// Specific instance: 16-to-1 MUX\nmodule nx1mux_16to1(\n    input [3:0] s,\n    input [15:0] din,\n    output dout\n);\n    // Instantiate parameterized mux with:\n    // SEL_WIDTH=4, DATA_WIDTH=16\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_parameterized_mux;\n    // Test the 16-to-1 instance\n    reg [3:0] s;\n    reg [15:0] din;\n    wire dout;\n    \n    // Instantiate Unit Under Test (16-to-1)\n    nx1mux_16to1 uut (\n        .s(s),\n        .din(din),\n        .dout(dout)\n    );\n    \n    // Helper function\n    function bit get_expected;\n        input [3:0] sel;\n        input [15:0] data;\n        begin\n            get_expected = data[sel];\n        end\n    endfunction\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing Parameterized N-to-1 Multiplexer (16-to-1)...\");\n        \n        // Initialize\n        s = 4'b0;\n        din = 16'b0;\n        \n        // Test 1: Basic functionality\n        $display(\"\\nTest 1: Basic selection...\");\n        for(int i = 0; i < 16; i = i + 1) begin\n            s = i;\n            din = 16'b0;\n            din[i] = 1'b1;  // Set only the selected bit\n            #10;\n            \n            if(dout !== 1'b1) \n                $error(\"Failed to select input %0d\", i);\n            else\n                $display(\"  PASS: Selected input %0d correctly\", i);\n        end\n        \n        // Test 2: All bits high\n        $display(\"\\nTest 2: All inputs high...\");\n        din = 16'hFFFF;  // All bits high\n        for(int i = 0; i < 16; i = i + 1) begin\n            s = i;\n            #10;\n            if(dout !== 1'b1) \n                $error(\"Failed with all high, sel=%0d\", i);\n        end\n        \n        // Test 3: All bits low\n        $display(\"\\nTest 3: All inputs low...\");\n        din = 16'h0000;  // All bits low\n        for(int i = 0; i < 16; i = i + 1) begin\n            s = i;\n            #10;\n            if(dout !== 1'b0) \n                $error(\"Failed with all low, sel=%0d\", i);\n        end\n        \n        // Test 4: Pattern test\n        $display(\"\\nTest 4: Pattern test...\");\n        din = 16'b1010_0101_1110_0001;\n        for(int i = 0; i < 16; i = i + 1) begin\n            s = i;\n            #10;\n            bit expected = din[i];\n            if(dout !== expected) \n                $error(\"Pattern test failed at sel=%0d, expected=%b, got=%b\",\n                      i, expected, dout);\n        end\n        \n        $display(\"\\nAll tests completed successfully!\");\n        $finish;\n    end\nendmodule",
+    "hint": "Use a for loop inside always @(*) to check each input bit. When s equals loop index, output that bit of din.",
+    "examples": [
+      {
+        "input": "s=4'b0011 (3), din=16'b0000000000001000",
+        "output": "dout=1",
+        "explanation": "Selects input 3 (din[3]) which is 1"
+      },
+      {
+        "input": "s=4'b1111 (15), din=16'b1000000000000000",
+        "output": "dout=1",
+        "explanation": "Selects input 15 (din[15])"
+      },
+      {
+        "input": "s=4'b0000 (0), din=16'b0000000000000001",
+        "output": "dout=1",
+        "explanation": "Selects input 0 (din[0])"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"s": 3, "din": "16'b0000000000001000"},
+        "expected": {"dout": 1},
+        "description": "Select input 3"
+      },
+      {
+        "input": {"s": 0, "din": "16'b0000000000000001"},
+        "expected": {"dout": 1},
+        "description": "Select input 0"
+      },
+      {
+        "input": {"s": 15, "din": "16'b1000000000000000"},
+        "expected": {"dout": 1},
+        "description": "Select input 15"
+      },
+      {
+        "input": {"s": 7, "din": "16'b0000000010000000"},
+        "expected": {"dout": 1},
+        "description": "Select input 7"
+      }
+    ],
+    "constraints": ["Parameterized design", "Generic N-to-1 mux", "Specific 16-to-1 instance", "Combinational logic"]
+  },
+  {
+    "id": "fsm_3bit_parity_generator",
+    "title": "FSM: 3-bit Parity Generator",
+    "description": "Design an FSM that generates parity bit for every 3 consecutive input bits. After observing 3 bits on input 'w', output p=1 if number of 1s is odd, p=0 if even. Then reset for next 3-bit window. Use 11 states (s0-s10).",
+    "difficulty": "hard",
+    "category": "sequential",
+    "template": "module fsm_3bit_parity(\n    input clk,\n    input in,\n    input rst,\n    output y\n);\n    // Write your code here\n    // 3-bit sliding window parity generator\n    // 11 states needed to track history\n    // Output depends on state (Moore)\n    // States s7-s10 output y=1 (odd parity)\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_fsm_3bit_parity;\n    // Inputs\n    reg clk;\n    reg in;\n    reg rst;\n    \n    // Outputs\n    wire y;\n    \n    // Instantiate Unit Under Test\n    fsm_3bit_parity uut (\n        .clk(clk),\n        .in(in),\n        .rst(rst),\n        .y(y)\n    );\n    \n    // Clock generation\n    initial begin\n        clk = 1'b0;\n        forever #5 clk = ~clk;\n    end\n    \n    // Test tasks\n    task reset_task;\n        begin\n            @(negedge clk);\n            rst = 1'b1;\n            @(negedge clk);\n            rst = 1'b0;\n        end\n    endtask\n    \n    task apply_3bit_seq;\n        input [2:0] seq;\n        begin\n            for(int i = 0; i < 3; i = i + 1) begin\n                @(negedge clk);\n                in = seq[i];\n            end\n        end\n    endtask\n    \n    // Helper: count 1s in 3-bit sequence\n    function integer count_ones;\n        input [2:0] seq;\n        begin\n            count_ones = 0;\n            for(int i = 0; i < 3; i = i + 1) begin\n                if(seq[i]) count_ones++;\n            end\n        end\n    endfunction\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing 3-bit Parity Generator FSM...\");\n        \n        // Test all 8 possible 3-bit sequences\n        $display(\"\\nTesting all 8 possible 3-bit sequences:\");\n        \n        for(int seq_val = 0; seq_val < 8; seq_val = seq_val + 1) begin\n            // Reset for each test\n            reset_task;\n            \n            // Apply sequence\n            apply_3bit_seq(seq_val);\n            \n            // Calculate expected parity\n            integer ones = count_ones(seq_val);\n            bit expected_parity = (ones % 2 == 1);  // 1 if odd\n            \n            // Check output\n            if(y !== expected_parity) begin\n                $error(\"Sequence %3b failed: ones=%0d, expected=%b, got=%b\",\n                      seq_val, ones, expected_parity, y);\n            end\n            else begin\n                $display(\"  PASS: %3b -> ones=%0d, parity=%b\",\n                        seq_val, ones, y);\n            end\n        end\n        \n        // Test consecutive windows\n        $display(\"\\nTesting consecutive 3-bit windows...\");\n        reset_task;\n        \n        // Send: 101 011 110\n        // Window 1: 101 (2 ones -> even -> y=0)\n        apply_3bit_seq(3'b101);\n        if(y !== 1'b0) $error(\"Window 1 failed\");\n        \n        // Window 2: 011 (2 ones -> even -> y=0)\n        apply_3bit_seq(3'b011);\n        if(y !== 1'b0) $error(\"Window 2 failed\");\n        \n        // Window 3: 110 (2 ones -> even -> y=0)\n        apply_3bit_seq(3'b110);\n        if(y !== 1'b0) $error(\"Window 3 failed\");\n        \n        // Test odd parity sequences\n        $display(\"\\nTesting odd parity sequences...\");\n        reset_task;\n        \n        // 111 (3 ones -> odd -> y=1)\n        apply_3bit_seq(3'b111);\n        if(y !== 1'b1) $error(\"111 should give y=1\");\n        \n        reset_task;\n        // 100 (1 one -> odd -> y=1)\n        apply_3bit_seq(3'b100);\n        if(y !== 1'b1) $error(\"100 should give y=1\");\n        \n        $display(\"\\nAll tests completed successfully!\");\n        #100 $finish;\n    end\n    \n    // Monitor output\n    initial begin\n        $monitor(\"Time=%0t: in=%b, y=%b\", $time, in, y);\n    end\nendmodule",
+    "hint": "States represent: history of 0-2 bits seen so far + parity of those bits. Need 2^0 + 2^1 + 2^2 = 1 + 2 + 4 = 7 states for tracking, plus detection states = 11 total.",
+    "examples": [
+      {
+        "input": "Sequence: 1,0,1",
+        "output": "y=0 after 3rd bit",
+        "explanation": "2 ones (even) → parity 0"
+      },
+      {
+        "input": "Sequence: 1,1,1",
+        "output": "y=1 after 3rd bit",
+        "explanation": "3 ones (odd) → parity 1"
+      },
+      {
+        "input": "Sequence: 0,0,1",
+        "output": "y=1 after 3rd bit",
+        "explanation": "1 one (odd) → parity 1"
+      },
+      {
+        "input": "Sequence: 0,0,0",
+        "output": "y=0 after 3rd bit",
+        "explanation": "0 ones (even) → parity 0"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"sequence": "101"},
+        "expected": {"parity": 0},
+        "description": "Even parity (2 ones)"
+      },
+      {
+        "input": {"sequence": "111"},
+        "expected": {"parity": 1},
+        "description": "Odd parity (3 ones)"
+      },
+      {
+        "input": {"sequence": "001"},
+        "expected": {"parity": 1},
+        "description": "Odd parity (1 one)"
+      },
+      {
+        "input": {"sequence": "010"},
+        "expected": {"parity": 1},
+        "description": "Odd parity (1 one)"
+      },
+      {
+        "input": {"sequence": "110"},
+        "expected": {"parity": 0},
+        "description": "Even parity (2 ones)"
+      }
+    ],
+    "constraints": ["11-state FSM", "3-bit sliding window", "Reset after each 3 bits", "Moore machine", "Output y=1 for odd parity"]
+  },
+  {
+    "id": "real_random_generator",
+    "title": "Real Random Number Generator (1.000 to 2.000)",
+    "description": "Generate 5 random real numbers between 1.000 and 2.000. Use $random system function and scale output to desired range with 3 decimal places precision.",
+    "difficulty": "easy",
+    "category": "testbench",
+    "template": "module random_real_generator;\n    // Write your code here\n    // Generate 5 random real numbers\n    // Range: 1.000 to 2.000\n    // Format: xxx.yyy (3 decimal places)\n    // Use: c = ({$random} % 1000) + 1000; c = c / 1000;\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_random_real_generator;\n    // Test the random generator\n    \n    initial begin\n        $display(\"Testing Real Random Number Generator (1.000 to 2.000)...\");\n        $display(\"\\nExpected: 5 random numbers between 1.000 and 2.000\");\n        $display(\"Each number should have 3 decimal places\");\n        \n        // Run the generator\n        #30;  // Allow time for 5 numbers @ 5ns each\n        \n        // Verify constraints\n        $display(\"\\nVerification:\");\n        $display(\"1. All numbers should be >= 1.000\");\n        $display(\"2. All numbers should be <= 2.000\");\n        $display(\"3. Should generate exactly 5 numbers\");\n        \n        $display(\"\\nTest completed!\");\n        $finish;\n    end\n    \n    // Optional: Add automatic checking if we can access module variables\n    // For demonstration, we'll just run and visually verify\nendmodule",
+    "hint": "Use: real c; c = ({$random} % 1000); c = c + 1000; c = c / 1000; This gives range 1.000 to 1.999.",
+    "examples": [
+      {
+        "input": "First random call",
+        "output": "e.g., 1.523",
+        "explanation": "Random number: 1 + (523/1000) = 1.523"
+      },
+      {
+        "input": "Second random call",
+        "output": "e.g., 1.789",
+        "explanation": "Random number: 1 + (789/1000) = 1.789"
+      },
+      {
+        "input": "Third random call",
+        "output": "e.g., 1.042",
+        "explanation": "Random number: 1 + (42/1000) = 1.042"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"generation": 1},
+        "expected": {"min": 1.000, "max": 2.000},
+        "description": "First number in range"
+      },
+      {
+        "input": {"generation": 5},
+        "expected": {"min": 1.000, "max": 2.000},
+        "description": "Fifth number in range"
+      },
+      {
+        "input": {"count": "all"},
+        "expected": {"total": 5},
+        "description": "Exactly 5 numbers generated"
+      }
+    ],
+    "constraints": ["Generate exactly 5 numbers", "Range: 1.000 to 2.000", "3 decimal places precision", "Use $random system function", "Real data type"]
+  },
+  {
+    "id": "dff_using_d_latch",
+    "title": "D Flip-Flop Using D Latches (Master-Slave)",
+    "description": "Implement a positive-edge triggered D flip-flop using two level-sensitive D latches in master-slave configuration. First latch (master) transparent when clock=0, second latch (slave) transparent when clock=1.",
+    "difficulty": "medium",
+    "category": "sequential",
+    "template": "module dff_master_slave(\n    input clock,\n    input rst,\n    input din,\n    output q,\n    output qbar\n);\n    // Write your code here\n    // Master-slave DFF using D latches\n    // Master latch: ctrl = ~clock\n    // Slave latch: ctrl = clock\n    // Creates positive-edge triggered behavior\n    \nendmodule\n\n// D Latch module\nmodule d_latch(\n    input ctrl,  // Control (enable)\n    input d,\n    input rst,\n    output reg q,\n    output qbar\n);\n    // Level-sensitive D latch\n    // When ctrl=1: q follows d\n    // When ctrl=0: q holds value\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_dff_master_slave;\n    // Inputs\n    reg clock;\n    reg rst;\n    reg din;\n    \n    // Outputs\n    wire q;\n    wire qbar;\n    \n    // Instantiate Unit Under Test\n    dff_master_slave uut (\n        .clock(clock),\n        .rst(rst),\n        .din(din),\n        .q(q),\n        .qbar(qbar)\n    );\n    \n    // Clock generation\n    initial begin\n        clock = 1'b0;\n        forever #5 clock = ~clock;\n    end\n    \n    // Test tasks\n    task reset_task;\n        begin\n            @(negedge clock);\n            rst = 1'b1;\n            @(negedge clock);\n            rst = 1'b0;\n        end\n    endtask\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing D Flip-Flop using D Latches (Master-Slave)...\");\n        \n        // Test 1: Reset\n        $display(\"\\nTest 1: Reset functionality...\");\n        reset_task;\n        if(q !== 1'b0 || qbar !== 1'b1) \n            $error(\"Reset failed\");\n        else\n            $display(\"PASS: Reset works\");\n        \n        // Test 2: Positive edge capture\n        $display(\"\\nTest 2: Positive edge capture...\");\n        // Setup data before rising edge\n        @(negedge clock);\n        din = 1'b1;\n        @(posedge clock);  // Should capture here\n        #1;  // Small delay for output to settle\n        if(q !== 1'b1) \n            $error(\"Failed to capture 1 on rising edge\");\n        else\n            $display(\"PASS: Captured 1 on rising edge\");\n        \n        // Test 3: Hold during high clock\n        $display(\"\\nTest 3: Hold during clock high...\");\n        // Change data while clock is high\n        @(negedge clock);\n        din = 1'b0;\n        @(posedge clock);  // Capture 0\n        #1;\n        if(q !== 1'b0) $error(\"Failed to capture 0\");\n        \n        // Now change data during clock high\n        din = 1'b1;  // Change while clock=1\n        #10;  // Wait while clock high\n        if(q !== 1'b0) \n            $error(\"Output changed during clock high (should hold)\");\n        else\n            $display(\"PASS: Held value during clock high\");\n        \n        // Test 4: Multiple edges\n        $display(\"\\nTest 4: Multiple clock edges...\");\n        reset_task;\n        \n        for(int i = 0; i < 4; i = i + 1) begin\n            @(negedge clock);\n            din = i[0];  // Alternate 0,1\n            @(posedge clock);\n            #1;\n            if(q !== i[0]) \n                $error(\"Failed on edge %0d\", i);\n        end\n        $display(\"PASS: Multiple edges work\");\n        \n        $display(\"\\nAll tests completed successfully!\");\n        #100 $finish;\n    end\n    \n    // Monitor output\n    initial begin\n        $monitor(\"Time=%0t: clock=%b, din=%b, q=%b, qbar=%b\",\n                $time, clock, din, q, qbar);\n    end\nendmodule",
+    "hint": "Master latch captures data when clock=0 (transparent). Slave latch captures from master when clock=1. Combined effect: data captured on rising edge.",
+    "examples": [
+      {
+        "input": "din=1 during clock=0, then clock rising edge",
+        "output": "q=1 after rising edge",
+        "explanation": "Data captured on positive edge"
+      },
+      {
+        "input": "din changes while clock=1",
+        "output": "q doesn't change",
+        "explanation": "Output holds during clock high phase"
+      },
+      {
+        "input": "din=0 during clock=0, then clock rising edge",
+        "output": "q=0 after rising edge",
+        "explanation": "Zero captured on positive edge"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"din": 1, "setup": "before_rising_edge", "clock_edge": "rising"},
+        "expected": {"q": 1},
+        "description": "Capture 1 on rising edge"
+      },
+      {
+        "input": {"din": 0, "setup": "before_rising_edge", "clock_edge": "rising"},
+        "expected": {"q": 0},
+        "description": "Capture 0 on rising edge"
+      },
+      {
+        "input": {"din_change": "during_clock_high", "initial_q": 1},
+        "expected": {"q": 1},
+        "description": "Hold value when din changes during clock high"
+      },
+      {
+        "input": {"rst": 1, "initial_q": 1},
+        "expected": {"q": 0, "qbar": 1},
+        "description": "Reset clears output"
+      }
+    ],
+    "constraints": ["Use D latches only", "Master-slave configuration", "Positive-edge triggered", "Synchronous reset", "qbar = ~q always"]
+  },
+  {
+    "id": "sequence_generator_01_pattern",
+    "title": "Sequence Generator: 01, 10, 01, 20, 01, 40, 01, 80",
+    "description": "Generate repeating sequence: 01, 10, 01, 20, 01, 40, 01, 80. Output is 8-bit: lower 4 bits generate 01 pattern, upper 4 bits generate powers of 2 (0,1,0,2,0,4,0,8).",
+    "difficulty": "hard",
+    "category": "sequential",
+    "template": "module sequence_generator_01(\n    input clock,\n    input rst,\n    output reg [7:0] out\n);\n    // Write your code here\n    // Generate sequence: 01,10,01,20,01,40,01,80\n    // out[7:4] (upper): 0,1,0,2,0,4,0,8\n    // out[3:0] (lower): 1,0,1,0,1,0,1,0\n    // 8 values then repeat\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_sequence_generator_01;\n    // Inputs\n    reg clock;\n    reg rst;\n    \n    // Outputs\n    wire [7:0] out;\n    \n    // Instantiate Unit Under Test\n    sequence_generator_01 uut (\n        .clock(clock),\n        .rst(rst),\n        .out(out)\n    );\n    \n    // Clock generation\n    initial begin\n        clock = 1'b0;\n        forever #5 clock = ~clock;\n    end\n    \n    // Expected sequence (8 values)\n    reg [7:0] expected_seq [0:7];\n    initial begin\n        expected_seq[0] = 8'h01;  // 0000 0001\n        expected_seq[1] = 8'h10;  // 0001 0000\n        expected_seq[2] = 8'h01;  // 0000 0001\n        expected_seq[3] = 8'h20;  // 0010 0000\n        expected_seq[4] = 8'h01;  // 0000 0001\n        expected_seq[5] = 8'h40;  // 0100 0000\n        expected_seq[6] = 8'h01;  // 0000 0001\n        expected_seq[7] = 8'h80;  // 1000 0000\n    end\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing Sequence Generator: 01,10,01,20,01,40,01,80...\");\n        \n        // Reset\n        rst = 1'b1;\n        #20;\n        rst = 1'b0;\n        \n        // Test full sequence (8 values)\n        $display(\"\\nTesting full sequence cycle...\");\n        for(int cycle = 0; cycle < 2; cycle = cycle + 1) begin\n            $display(\"\\nCycle %0d:\", cycle);\n            \n            for(int i = 0; i < 8; i = i + 1) begin\n                @(posedge clock);\n                if(out !== expected_seq[i]) begin\n                    $error(\"At position %0d: expected %02x, got %02x\",\n                          i, expected_seq[i], out);\n                end\n                else begin\n                    $display(\"  Position %0d: %02x (PASS)\", i, out);\n                end\n            end\n        end\n        \n        // Test reset in middle of sequence\n        $display(\"\\nTesting reset during sequence...\");\n        @(posedge clock);\n        rst = 1'b1;\n        @(posedge clock);\n        rst = 1'b0;\n        \n        // After reset, should start at beginning (01)\n        @(posedge clock);\n        if(out !== 8'h01) \n            $error(\"After reset, expected 01, got %02x\", out);\n        else\n            $display(\"PASS: Reset returns to sequence start\");\n        \n        $display(\"\\nAll tests completed successfully!\");\n        #100 $finish;\n    end\n    \n    // Monitor output\n    initial begin\n        $monitor(\"Time=%0t: out=%02x (decimal: %0d)\", $time, out, out);\n    end\nendmodule",
+    "hint": "Use separate counters for upper and lower nibbles. Lower nibble: 1,0,1,0,... (toggles). Upper nibble: 0,1,0,2,0,4,0,8 (powers of 2 at odd positions).",
+    "examples": [
+      {
+        "input": "After reset, first clock",
+        "output": "out=8'h01 (00000001)",
+        "explanation": "First value: 01 (upper=0, lower=1)"
+      },
+      {
+        "input": "Second clock",
+        "output": "out=8'h10 (00010000)",
+        "explanation": "Second value: 10 (upper=1, lower=0)"
+      },
+      {
+        "input": "Third clock",
+        "output": "out=8'h01 (00000001)",
+        "explanation": "Third value: 01 (upper=0, lower=1)"
+      },
+      {
+        "input": "Fourth clock",
+        "output": "out=8'h20 (00100000)",
+        "explanation": "Fourth value: 20 (upper=2, lower=0)"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"position": 0},
+        "expected": {"out": "8'h01"},
+        "description": "First value: 01"
+      },
+      {
+        "input": {"position": 1},
+        "expected": {"out": "8'h10"},
+        "description": "Second value: 10"
+      },
+      {
+        "input": {"position": 3},
+        "expected": {"out": "8'h20"},
+        "description": "Fourth value: 20"
+      },
+      {
+        "input": {"position": 7},
+        "expected": {"out": "8'h80"},
+        "description": "Eighth value: 80"
+      },
+      {
+        "input": {"position": 8},
+        "expected": {"out": "8'h01"},
+        "description": "Ninth value: wraps to 01"
+      }
+    ],
+    "constraints": ["8-bit output", "8-value repeating sequence", "Separate upper/lower nibble control", "Reset to first value"]
+  },
+  {
+    "id": "sequence_counter_122333444455555",
+    "title": "Sequence Counter: 1,2,2,3,3,3,4,4,4,4,5,5,5,5,5",
+    "description": "Design a sequential circuit that counts through pattern: 1,2,2,3,3,3,4,4,4,4,5,5,5,5,5 and repeats. Each number n appears exactly n times in sequence.",
+    "difficulty": "medium",
+    "category": "sequential",
+    "template": "module sequence_counter_12233(\n    input clock,\n    input rst,\n    output reg [2:0] out\n);\n    // Write your code here\n    // Sequence: 1,2,2,3,3,3,4,4,4,4,5,5,5,5,5\n    // Need two counters:\n    // 1. Current number (1-5)\n    // 2. Repetition count (1 to current number)\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_sequence_counter_12233;\n    // Inputs\n    reg clock;\n    reg rst;\n    \n    // Outputs\n    wire [2:0] out;\n    \n    // Instantiate Unit Under Test\n    sequence_counter_12233 uut (\n        .clock(clock),\n        .rst(rst),\n        .out(out)\n    );\n    \n    // Clock generation\n    initial begin\n        clock = 1'b0;\n        forever #5 clock = ~clock;\n    end\n    \n    // Expected sequence (15 values)\n    reg [2:0] expected_seq [0:14];\n    initial begin\n        // 1 appears 1 time\n        expected_seq[0] = 3'd1;\n        \n        // 2 appears 2 times\n        expected_seq[1] = 3'd2;\n        expected_seq[2] = 3'd2;\n        \n        // 3 appears 3 times\n        expected_seq[3] = 3'd3;\n        expected_seq[4] = 3'd3;\n        expected_seq[5] = 3'd3;\n        \n        // 4 appears 4 times\n        expected_seq[6] = 3'd4;\n        expected_seq[7] = 3'd4;\n        expected_seq[8] = 3'd4;\n        expected_seq[9] = 3'd4;\n        \n        // 5 appears 5 times\n        expected_seq[10] = 3'd5;\n        expected_seq[11] = 3'd5;\n        expected_seq[12] = 3'd5;\n        expected_seq[13] = 3'd5;\n        expected_seq[14] = 3'd5;\n    end\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing Sequence Counter: 1,2,2,3,3,3,4,4,4,4,5,5,5,5,5...\");\n        \n        // Test 1: Reset\n        $display(\"\\nTest 1: Reset...\");\n        rst = 1'b1;\n        #20;\n        rst = 1'b0;\n        \n        if(out !== 3'd1) \n            $error(\"After reset, expected 1, got %0d\", out);\n        else\n            $display(\"PASS: Reset gives 1\");\n        \n        // Test 2: Full sequence (15 values)\n        $display(\"\\nTest 2: Full sequence (15 values)...\");\n        \n        for(int i = 0; i < 15; i = i + 1) begin\n            @(posedge clock);\n            if(out !== expected_seq[i]) begin\n                $error(\"Position %0d: expected %0d, got %0d\",\n                      i, expected_seq[i], out);\n            end\n            else begin\n                $display(\"  Position %2d: %0d (PASS)\", i, out);\n            end\n        end\n        \n        // Test 3: Wrap-around (16th value should be 1 again)\n        $display(\"\\nTest 3: Wrap-around...\");\n        @(posedge clock);  // 16th clock\n        if(out !== 3'd1) \n            $error(\"After 15 values, expected 1, got %0d\", out);\n        else\n            $display(\"PASS: Wraps to 1 after 15 values\");\n        \n        // Test 4: Second cycle\n        $display(\"\\nTest 4: Second cycle...\");\n        for(int i = 1; i < 15; i = i + 1) begin\n            @(posedge clock);\n            if(out !== expected_seq[i]) \n                $error(\"Second cycle pos %0d failed\", i);\n        end\n        $display(\"PASS: Second cycle correct\");\n        \n        // Test 5: Reset during sequence\n        $display(\"\\nTest 5: Reset during sequence...\");\n        // Get to middle of sequence (position 8 = 4)\n        rst = 1'b1;\n        #20;\n        rst = 1'b0;\n        \n        @(posedge clock);\n        if(out !== 3'd1) \n            $error(\"Reset during sequence failed\");\n        else\n            $display(\"PASS: Reset returns to start\");\n        \n        $display(\"\\nAll tests completed successfully!\");\n        #100 $finish;\n    end\nendmodule",
+    "hint": "Use two 3-bit counters: 'current_num' (1-5) and 'rep_count' (1 to current_num). When rep_count == current_num, reset rep_count and increment current_num. When current_num reaches 6, reset to 1.",
+    "examples": [
+      {
+        "input": "Start (after reset)",
+        "output": "out=1",
+        "explanation": "First value is 1"
+      },
+      {
+        "input": "After 1 clock",
+        "output": "out=2",
+        "explanation": "Second value: first 2"
+      },
+      {
+        "input": "After 2 clocks",
+        "output": "out=2",
+        "explanation": "Third value: second 2"
+      },
+      {
+        "input": "After 5 clocks",
+        "output": "out=3",
+        "explanation": "Sixth value: third 3 (last 3)"
+      },
+      {
+        "input": "After 14 clocks",
+        "output": "out=5",
+        "explanation": "Fifteenth value: fifth 5 (last 5)"
+      },
+      {
+        "input": "After 15 clocks",
+        "output": "out=1",
+        "explanation": "Wraps to 1 for next cycle"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"position": 0},
+        "expected": {"out": 1},
+        "description": "First value"
+      },
+      {
+        "input": {"position": 3},
+        "expected": {"out": 3},
+        "description": "Fourth value (first 3)"
+      },
+      {
+        "input": {"position": 8},
+        "expected": {"out": 4},
+        "description": "Ninth value (third 4)"
+      },
+      {
+        "input": {"position": 14},
+        "expected": {"out": 5},
+        "description": "Fifteenth value (last 5)"
+      },
+      {
+        "input": {"position": 15},
+        "expected": {"out": 1},
+        "description": "Wraps to 1"
+      }
+    ],
+    "constraints": ["3-bit output (values 1-5)", "15-value repeating sequence", "Each value n appears n times", "Reset to first value (1)"]
+  },
+  {
+    "id": "forever_counter_with_disable",
+    "title": "Counter with Forever Loop and Named Block Disable",
+    "description": "Design an 8-bit counter using forever loop and named block disable. Counter starts at 5, increments on positive clock edges, stops at 67, and disables itself using 'disable' statement.",
+    "difficulty": "medium",
+    "category": "testbench",
+    "template": "module forever_counter_disable;\n    // Write your code here\n    // 8-bit counter: 5 → 67\n    // Clock period: 10ns (5ns high, 5ns low)\n    // Use forever loop in named block\n    // Disable when count==67\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_forever_counter_disable;\n    // Test the counter module\n    \n    initial begin\n        $display(\"Testing Counter with Forever Loop and Disable...\");\n        $display(\"Expected: Counter starts at 5, increments to 67, then stops\");\n        \n        // Run simulation long enough to reach 67\n        // From 5 to 67 = 62 increments × 10ns = 620ns\n        // Add some margin: 700ns\n        #700;\n        \n        // Verification points\n        $display(\"\\nVerification:\");\n        $display(\"1. Should start at 5\");\n        $display(\"2. Should increment on each posedge clock\");\n        $display(\"3. Should stop at 67\");\n        $display(\"4. Should not increment after reaching 67\");\n        \n        $display(\"\\nTest completed! Check waveform/manual verification needed.\");\n        $finish;\n    end\n    \n    // Monitor - if we can access the counter variable\n    // For demonstration, we assume module has 'count' visible\n    // In real test, might need to make it public or use hierarchical reference\nendmodule",
+    "hint": "Use: begin: counting_block ... forever begin ... if(count==67) disable counting_block; ... end ... end",
+    "examples": [
+      {
+        "input": "Initial state",
+        "output": "count=5",
+        "explanation": "Counter starts at 5"
+      },
+      {
+        "input": "After 1 clock cycle",
+        "output": "count=6",
+        "explanation": "Increments on first positive edge"
+      },
+      {
+        "input": "After reaching count=67",
+        "output": "Counter stops, count stays at 67",
+        "explanation": "Named block disabled, no more increments"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"time": 0},
+        "expected": {"count": 5},
+        "description": "Initial count value"
+      },
+      {
+        "input": {"time": 10},
+        "expected": {"count": 6},
+        "description": "After first clock edge"
+      },
+      {
+        "input": {"time": 620},
+        "expected": {"count": 67},
+        "description": "Final value after 62 increments"
+      },
+      {
+        "input": {"time": 1000},
+        "expected": {"count": 67},
+        "description": "Should still be 67 after disable"
+      }
+    ],
+    "constraints": ["Start at 5", "Stop at 67", "10ns clock period", "Use forever loop", "Use named block disable", "Increment on posedge only"]
+  },
+  {
+    "id": "infinite_sequence_5_7_loop",
+    "title": "Infinite Sequence Generator: 5-7-5-7 using For Loop",
+    "description": "Generate infinite sequence: 5,7,5,7,... using for loop without increment. Sequence repeats every 10ns (5ns per value).",
+    "difficulty": "easy",
+    "category": "testbench",
+    "template": "module infinite_sequence_5_7;\n    // Write your code here\n    // Generate infinite sequence: 5,7,5,7,...\n    // Use for loop with no increment: for(i=0;i<10;i=i)\n    // 5ns per value, 10ns per cycle\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_infinite_sequence_5_7;\n    // Test the sequence generator\n    \n    initial begin\n        $display(\"Testing Infinite Sequence Generator: 5-7-5-7...\");\n        $display(\"Expected: 5,7,5,7 repeating every 10ns\");\n        \n        // Monitor first few cycles\n        #50;  // 5 cycles (10 values)\n        \n        $display(\"\\nVerification:\");\n        $display(\"1. First value should be 5\");\n        $display(\"2. Second value should be 7\");\n        $display(\"3. Pattern should repeat every 10ns\");\n        $display(\"4. Should continue indefinitely\");\n        \n        $display(\"\\nTest completed!\");\n        $finish;\n    end\nendmodule",
+    "hint": "The trick is: for(i=0; i<10; i=i) - loop variable doesn't increment, creating infinite loop inside.",
+    "examples": [
+      {
+        "input": "Time 0ns",
+        "output": "a=5",
+        "explanation": "Sequence starts with 5"
+      },
+      {
+        "input": "Time 5ns",
+        "output": "a=7",
+        "explanation": "Second value is 7"
+      },
+      {
+        "input": "Time 10ns",
+        "output": "a=5",
+        "explanation": "Pattern repeats: back to 5"
+      },
+      {
+        "input": "Time 15ns",
+        "output": "a=7",
+        "explanation": "Continues pattern"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"time": 0},
+        "expected": {"a": 5},
+        "description": "First value at time 0"
+      },
+      {
+        "input": {"time": 5},
+        "expected": {"a": 7},
+        "description": "Second value at 5ns"
+      },
+      {
+        "input": {"time": 10},
+        "expected": {"a": 5},
+        "description": "Third value (repeat) at 10ns"
+      },
+      {
+        "input": {"time": 25},
+        "expected": {"a": 5},
+        "description": "Should still be following pattern at 25ns"
+      }
+    ],
+    "constraints": ["Infinite sequence", "Pattern: 5,7,5,7,...", "Use for loop without increment", "10ns per cycle (5ns per value)"]
+  },
+  {
+    "id": "shift_register_partial_window",
+    "title": "8-bit SISO Shift Register with Partial Shifting Window",
+    "description": "Design an 8-bit left shift SISO register that shifts only during first 4 clock cycles of every 8-cycle window. During remaining 4 cycles, it acts as buffer (holds value). Reset is synchronous active high.",
+    "difficulty": "hard",
+    "category": "sequential",
+    "template": "module shift_register_partial(\n    input clk,\n    input rst,\n    input din,\n    output reg dout\n);\n    parameter BITS = 8;\n    // Write your code here\n    // 8-bit shift register\n    // Shift for cycles 0-3 of each 8-cycle window\n    // Buffer (hold) for cycles 4-7\n    // Use counters to track window position\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_shift_register_partial;\n    // Inputs\n    reg clk;\n    reg rst;\n    reg din;\n    \n    // Outputs\n    wire dout;\n    \n    // Instantiate Unit Under Test\n    shift_register_partial uut (\n        .clk(clk),\n        .rst(rst),\n        .din(din),\n        .dout(dout)\n    );\n    \n    // Clock generation\n    initial begin\n        clk = 1'b0;\n        forever #5 clk = ~clk;\n    end\n    \n    // Test tasks\n    task reset_task;\n        begin\n            @(negedge clk);\n            rst = 1'b1;\n            @(negedge clk);\n            rst = 1'b0;\n        end\n    endtask\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing 8-bit Shift Register with Partial Shifting...\");\n        $display(\"Shifts for first 4 cycles, buffers for next 4 cycles per 8-cycle window.\");\n        \n        // Test 1: Reset\n        $display(\"\\nTest 1: Reset...\");\n        reset_task;\n        if(dout !== 1'b0) $error(\"Reset output should be 0\");\n        \n        // Test 2: Shifting phase (cycles 0-3)\n        $display(\"\\nTest 2: Shifting phase (first 4 cycles)...\");\n        // Send pattern: 1,0,1,0 during shifting phase\n        din = 1'b1; @(posedge clk);  // Cycle 0: shift in 1\n        din = 1'b0; @(posedge clk);  // Cycle 1: shift in 0\n        din = 1'b1; @(posedge clk);  // Cycle 2: shift in 1\n        din = 1'b0; @(posedge clk);  // Cycle 3: shift in 0\n        \n        // After 8 shifts, first bit (1) should appear at output\n        // Need to wait through buffer phase and next shifting phase\n        \n        // Test 3: Buffer phase (cycles 4-7)\n        $display(\"\\nTest 3: Buffer phase (next 4 cycles)...\");\n        // During buffer phase, output should hold last value\n        // regardless of din changes\n        din = 1'b1;  // Try to change input during buffer phase\n        repeat(4) @(posedge clk);  // Cycles 4-7\n        // Output should NOT change based on din during buffer phase\n        \n        // Test 4: Next shifting phase\n        $display(\"\\nTest 4: Next shifting phase...\");\n        // Continue shifting new bits\n        din = 1'b0; @(posedge clk);\n        din = 1'b1; @(posedge clk);\n        din = 1'b0; @(posedge clk);\n        din = 1'b1; @(posedge clk);\n        \n        // Test 5: Full pattern over multiple windows\n        $display(\"\\nTest 5: Full pattern test...\");\n        reset_task;\n        \n        // Apply known pattern over multiple windows\n        repeat(3) begin\n            // Shifting phase (4 cycles)\n            din = 1'b1; @(posedge clk);\n            din = 1'b0; @(posedge clk);\n            din = 1'b1; @(posedge clk);\n            din = 1'b0; @(posedge clk);\n            \n            // Buffer phase (4 cycles) - din shouldn't affect\n            din = 1'b1;  // Try to force 1\n            repeat(4) @(posedge clk);\n        end\n        \n        $display(\"\\nAll tests completed!\");\n        #100 $finish;\n    end\n    \n    // Monitor output\n    initial begin\n        $monitor(\"Time=%0t: clk=%b, din=%b, dout=%b\", $time, clk, din, dout);\n    end\nendmodule",
+    "hint": "Use two counters: 'count' (0-7) for position in 8-cycle window, and 'p' to track buffer cycles. Shift when count<4, hold when count>=4.",
+    "examples": [
+      {
+        "input": "During shifting phase (count=0,1,2,3), din=1",
+        "output": "Shift occurs, bit moves through register",
+        "explanation": "Normal shifting operation"
+      },
+      {
+        "input": "During buffer phase (count=4,5,6,7), din changes",
+        "output": "dout holds last value, doesn't change",
+        "explanation": "Buffer mode: holds value regardless of input"
+      },
+      {
+        "input": "After 8 cycles of shifting 1s",
+        "output": "dout=1 after 8th cycle",
+        "explanation": "Bit propagates through 8-bit register"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"phase": "shifting", "din": 1, "cycles": 4},
+        "expected": {"shifts": true},
+        "description": "Input shifts during shifting phase"
+      },
+      {
+        "input": {"phase": "buffer", "din": 1, "cycles": 4},
+        "expected": {"holds": true},
+        "description": "Holds value during buffer phase"
+      },
+      {
+        "input": {"reset": 1},
+        "expected": {"dout": 0},
+        "description": "Reset clears output"
+      },
+      {
+        "input": {"full_window": 8, "pattern": "10101010"},
+        "expected": {"delayed_output": true},
+        "description": "Full 8-cycle window behavior"
+      }
+    ],
+    "constraints": ["8-bit shift register", "Shift only first 4 of 8 cycles", "Buffer mode last 4 cycles", "Synchronous active high reset", "Left shift SISO"]
+  },
+  {
+    "id": "johnson_counter_4bit",
+    "title": "4-bit Johnson (Twisted Ring) Counter",
+    "description": "Design a 4-bit Johnson counter that circulates complemented bit through register. Pattern: 0000→1000→1100→1110→1111→0111→0011→0001→0000... 8 unique states.",
+    "difficulty": "medium",
+    "category": "sequential",
+    "template": "module johnson_counter_4bit(\n    input rst,\n    input clock,\n    output reg [3:0] q\n);\n    // Write your code here\n    // 4-bit Johnson counter\n    // Shift right and complement feedback\n    // q <= {~q[0], q[3:1]};\n    // Asynchronous reset\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_johnson_counter_4bit;\n    // Inputs\n    reg rst;\n    reg clock;\n    \n    // Outputs\n    wire [3:0] q;\n    \n    // Instantiate Unit Under Test\n    johnson_counter_4bit uut (\n        .rst(rst),\n        .clock(clock),\n        .q(q)\n    );\n    \n    // Clock generation\n    initial begin\n        clock = 1'b0;\n        forever #5 clock = ~clock;\n    end\n    \n    // Expected Johnson counter sequence (8 states)\n    reg [3:0] expected_seq [0:7];\n    initial begin\n        expected_seq[0] = 4'b0000;\n        expected_seq[1] = 4'b1000;\n        expected_seq[2] = 4'b1100;\n        expected_seq[3] = 4'b1110;\n        expected_seq[4] = 4'b1111;\n        expected_seq[5] = 4'b0111;\n        expected_seq[6] = 4'b0011;\n        expected_seq[7] = 4'b0001;\n    end\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing 4-bit Johnson Counter...\");\n        $display(\"Expected sequence: 0000→1000→1100→1110→1111→0111→0011→0001→0000\");\n        \n        // Test 1: Asynchronous reset\n        $display(\"\\nTest 1: Asynchronous reset...\");\n        rst = 1'b1;\n        #10;\n        if(q !== 4'b0000) $error(\"Reset failed: got %b\", q);\n        else $display(\"PASS: Reset to 0000\");\n        \n        rst = 1'b0;\n        #10;\n        \n        // Test 2: Full 8-state sequence\n        $display(\"\\nTest 2: Full 8-state sequence...\");\n        for(int i = 0; i < 8; i = i + 1) begin\n            @(posedge clock);\n            if(q !== expected_seq[i]) \n                $error(\"State %0d: expected %b, got %b\", i, expected_seq[i], q);\n            else\n                $display(\"  State %0d: %b (PASS)\", i, q);\n        end\n        \n        // Test 3: Wrap-around (9th state should be 0000 again)\n        $display(\"\\nTest 3: Wrap-around...\");\n        @(posedge clock);  // 9th clock\n        if(q !== 4'b0000) \n            $error(\"Wrap failed: expected 0000, got %b\", q);\n        else\n            $display(\"PASS: Wraps to 0000 after 8 states\");\n        \n        // Test 4: Multiple cycles\n        $display(\"\\nTest 4: Multiple cycles...\");\n        for(int cycle = 0; cycle < 2; cycle = cycle + 1) begin\n            $display(\"  Cycle %0d:\", cycle);\n            for(int i = 0; i < 8; i = i + 1) begin\n                @(posedge clock);\n                int expected_state = (i + cycle*8) % 8;\n                if(q !== expected_seq[expected_state]) \n                    $error(\"Cycle test failed\");\n            end\n        end\n        $display(\"PASS: Multiple cycles correct\");\n        \n        // Test 5: Reset during operation\n        $display(\"\\nTest 5: Reset during operation...\");\n        // Get to state 3 (1110)\n        repeat(3) @(posedge clock);\n        \n        // Assert reset asynchronously\n        rst = 1'b1;\n        #1;  // Small delay - should reset immediately\n        if(q !== 4'b0000) \n            $error(\"Async reset failed during operation\");\n        else\n            $display(\"PASS: Async reset works during operation\");\n        \n        rst = 1'b0;\n        \n        $display(\"\\nAll tests completed successfully!\");\n        #100 $finish;\n    end\nendmodule",
+    "hint": "Johnson counter: shift register with complemented feedback. For 4-bit: q[3] gets ~q[0], q[2] gets old q[3], q[1] gets old q[2], q[0] gets old q[1].",
+    "examples": [
+      {
+        "input": "Initial state after reset",
+        "output": "q=0000",
+        "explanation": "Johnson counter starts at 0000"
+      },
+      {
+        "input": "After 1 clock",
+        "output": "q=1000",
+        "explanation": "~q[0]=1 shifts in from left"
+      },
+      {
+        "input": "After 2 clocks",
+        "output": "q=1100",
+        "explanation": "Another 1 shifts in"
+      },
+      {
+        "input": "After 4 clocks",
+        "output": "q=1111",
+        "explanation": "All bits become 1"
+      },
+      {
+        "input": "After 5 clocks",
+        "output": "q=0111",
+        "explanation": "First 0 starts shifting in"
+      },
+      {
+        "input": "After 8 clocks",
+        "output": "q=0000",
+        "explanation": "Returns to start (8-state cycle)"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"state": 0},
+        "expected": {"q": "4'b0000"},
+        "description": "Initial/reset state"
+      },
+      {
+        "input": {"state": 1},
+        "expected": {"q": "4'b1000"},
+        "description": "State 1"
+      },
+      {
+        "input": {"state": 4},
+        "expected": {"q": "4'b1111"},
+        "description": "State 4 (all ones)"
+      },
+      {
+        "input": {"state": 7},
+        "expected": {"q": "4'b0001"},
+        "description": "State 7"
+      },
+      {
+        "input": {"state": 8},
+        "expected": {"q": "4'b0000"},
+        "description": "State 8 (wraps to 0)"
+      }
+    ],
+    "constraints": ["4-bit Johnson counter", "8 unique states", "Asynchronous reset", "Shift with complemented feedback"]
+  },
+  {
+    "id": "signed_unsigned_comparator_dataflow",
+    "title": "4-bit Signed/Unsigned Comparator (Dataflow)",
+    "description": "Design a 4-bit comparator using dataflow abstraction that works in both signed and unsigned modes. Control input c selects mode: c=0 for unsigned, c=1 for signed (two's complement). Outputs: g (greater), l (less), e (equal).",
+    "difficulty": "hard",
+    "category": "combinational",
+    "template": "module comparator_signed_unsigned(\n    input [3:0] a,\n    input [3:0] b,\n    input c,  // 0=unsigned, 1=signed\n    output g,  // a > b\n    output l,  // a < b\n    output e   // a == b\n);\n    // Write your code here\n    // Dataflow implementation\n    // c=0: unsigned comparison\n    // c=1: signed comparison (two's complement)\n    // Use bitwise operations, no always blocks\n    \nendmodule",
+    "testbench": "`timescale 1ns/1ps\nmodule tb_comparator_signed_unsigned;\n    // Inputs\n    reg [3:0] a;\n    reg [3:0] b;\n    reg c;\n    \n    // Outputs\n    wire g;\n    wire l;\n    wire e;\n    \n    // Instantiate Unit Under Test\n    comparator_signed_unsigned uut (\n        .a(a),\n        .b(b),\n        .c(c),\n        .g(g),\n        .l(l),\n        .e(e)\n    );\n    \n    // Helper: get comparison result string\n    function string get_result;\n        input greater, less, equal;\n        begin\n            if(equal) get_result = \"Equal\";\n            else if(greater) get_result = \"Greater\";\n            else if(less) get_result = \"Less\";\n            else get_result = \"Error\";\n        end\n    endfunction\n    \n    // Helper: signed value of 4-bit two's complement\n    function integer signed_value;\n        input [3:0] val;\n        begin\n            if(val[3])  // Negative\n                signed_value = -(16 - val);\n            else        // Positive\n                signed_value = val;\n        end\n    endfunction\n    \n    // Main test sequence\n    initial begin\n        $display(\"Testing 4-bit Signed/Unsigned Comparator...\");\n        \n        // Test 1: Unsigned mode (c=0)\n        $display(\"\\n=== Test 1: Unsigned Mode (c=0) ===\");\n        c = 1'b0;\n        \n        // Test cases for unsigned\n        test_case_unsigned(4'd7, 4'd8,  1'b0, 1'b1, 1'b0);  // 7 < 8\n        test_case_unsigned(4'd8, 4'd7,  1'b1, 1'b0, 1'b0);  // 8 > 7\n        test_case_unsigned(4'd5, 4'd5,  1'b0, 1'b0, 1'b1);  // 5 = 5\n        test_case_unsigned(4'd15, 4'd0, 1'b1, 1'b0, 1'b0);  // 15 > 0\n        test_case_unsigned(4'd0, 4'd15, 1'b0, 1'b1, 1'b0);  // 0 < 15\n        \n        // Test 2: Signed mode (c=1)\n        $display(\"\\n=== Test 2: Signed Mode (c=1) ===\");\n        c = 1'b1;\n        \n        // Test cases for signed (two's complement)\n        // 7 (0111) > -8 (1000) in signed\n        test_case_signed(4'b0111, 4'b1000, 1'b1, 1'b0, 1'b0);\n        \n        // -8 (1000) < 7 (0111) in signed\n        test_case_signed(4'b1000, 4'b0111, 1'b0, 1'b1, 1'b0);\n        \n        // -1 (1111) < 0 (0000) in signed\n        test_case_signed(4'b1111, 4'b0000, 1'b0, 1'b1, 1'b0);\n        \n        // 0 (0000) > -1 (1111) in signed\n        test_case_signed(4'b0000, 4'b1111, 1'b1, 1'b0, 1'b0);\n        \n        // -5 (1011) < -3 (1101) in signed\n        test_case_signed(4'b1011, 4'b1101, 1'b0, 1'b1, 1'b0);\n        \n        // 5 (0101) = 5 (0101)\n        test_case_signed(4'b0101, 4'b0101, 1'b0, 1'b0, 1'b1);\n        \n        // Test 3: Mixed exhaustive test\n        $display(\"\\n=== Test 3: Exhaustive test (selected samples) ===\");\n        c = 1'b0;  // Test in unsigned mode\n        for(int i = 0; i < 16; i = i + 4) begin  // Sample every 4th\n            for(int j = 0; j < 16; j = j + 4) begin\n                a = i;\n                b = j;\n                #10;\n                \n                // Calculate expected unsigned\n                bit exp_g = (i > j);\n                bit exp_l = (i < j);\n                bit exp_e = (i == j);\n                \n                if(g !== exp_g || l !== exp_l || e !== exp_e) begin\n                    $error(\"Unsigned: %0d vs %0d failed\", i, j);\n                end\n            end\n        end\n        \n        $display(\"\\nAll tests completed successfully!\");\n        $finish;\n    end\n    \n    // Task for unsigned test cases\n    task test_case_unsigned;\n        input [3:0] a_val, b_val;\n        input exp_g, exp_l, exp_e;\n        begin\n            a = a_val;\n            b = b_val;\n            #10;\n            \n            if(g !== exp_g || l !== exp_l || e !== exp_e) begin\n                $error(\"Unsigned: a=%0d, b=%0d failed\", a_val, b_val);\n                $display(\"  Expected: %s\", get_result(exp_g, exp_l, exp_e));\n                $display(\"  Got:      %s\", get_result(g, l, e));\n            end\n            else begin\n                $display(\"PASS: %0d vs %0d = %s\", \n                        a_val, b_val, get_result(g, l, e));\n            end\n        end\n    endtask\n    \n    // Task for signed test cases\n    task test_case_signed;\n        input [3:0] a_val, b_val;\n        input exp_g, exp_l, exp_e;\n        begin\n            a = a_val;\n            b = b_val;\n            #10;\n            \n            // Calculate expected signed values\n            integer a_signed = signed_value(a_val);\n            integer b_signed = signed_value(b_val);\n            \n            bit actual_g = (a_signed > b_signed);\n            bit actual_l = (a_signed < b_signed);\n            bit actual_e = (a_signed == b_signed);\n            \n            if(g !== exp_g || l !== exp_l || e !== exp_e) begin\n                $error(\"Signed: a=%0d(%0d), b=%0d(%0d) failed\",\n                      a_signed, a_val, b_signed, b_val);\n                $display(\"  Expected: %s\", get_result(exp_g, exp_l, exp_e));\n                $display(\"  Got:      %s\", get_result(g, l, e));\n            end\n            else begin\n                $display(\"PASS: %0d(%0d) vs %0d(%0d) = %s\",\n                        a_signed, a_val, b_signed, b_val, get_result(g, l, e));\n            end\n        end\n    endtask\nendmodule",
+    "hint": "For signed comparison: check sign bits first. If signs differ, negative number is smaller. If signs same, compare magnitude normally.",
+    "examples": [
+      {
+        "input": "c=0, a=7 (0111), b=8 (1000)",
+        "output": "l=1 (a < b)",
+        "explanation": "Unsigned: 7 < 8"
+      },
+      {
+        "input": "c=1, a=7 (0111), b=-8 (1000)",
+        "output": "g=1 (a > b)",
+        "explanation": "Signed: 7 > -8"
+      },
+      {
+        "input": "c=1, a=-1 (1111), b=0 (0000)",
+        "output": "l=1 (a < b)",
+        "explanation": "Signed: -1 < 0"
+      },
+      {
+        "input": "c=1, a=-5 (1011), b=-3 (1101)",
+        "output": "l=1 (a < b)",
+        "explanation": "Signed: -5 < -3"
+      }
+    ],
+    "test_cases": [
+      {
+        "input": {"mode": "unsigned", "a": 7, "b": 8},
+        "expected": {"g": 0, "l": 1, "e": 0},
+        "description": "Unsigned: 7 < 8"
+      },
+      {
+        "input": {"mode": "unsigned", "a": 15, "b": 0},
+        "expected": {"g": 1, "l": 0, "e": 0},
+        "description": "Unsigned: 15 > 0"
+      },
+      {
+        "input": {"mode": "signed", "a": -8, "b": 7},
+        "expected": {"g": 0, "l": 1, "e": 0},
+        "description": "Signed: -8 < 7"
+      },
+      {
+        "input": {"mode": "signed", "a": -1, "b": -2},
+        "expected": {"g": 1, "l": 0, "e": 0},
+        "description": "Signed: -1 > -2"
+      },
+      {
+        "input": {"mode": "any", "a": 5, "b": 5},
+        "expected": {"g": 0, "l": 0, "e": 1},
+        "description": "Equal in both modes"
+      }
+    ],
+    "constraints": ["Dataflow implementation (no always blocks)", "4-bit inputs", "Mode selection: c=0 unsigned, c=1 signed", "3 outputs: greater, less, equal", "Two's complement for signed"]
   }
 ]

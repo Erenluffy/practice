@@ -1404,8 +1404,8 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
         
         if compile_result.returncode != 0:
             error_msg = compile_result.stderr[:1000]
-            # Clean error message
-            error_msg = re.sub(r'\/tmp\/[^:]+:', 'line ', error_msg)
+            # Clean error message - use a simpler approach
+            error_msg = error_msg.replace(str(tmp_path), '')
             return {
                 "success": False,
                 "error": "Compilation Failed",
@@ -1429,14 +1429,88 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
         
         output = sim_result.stdout + sim_result.stderr
         
-        # Check for success patterns
+        # Check for success patterns - use simpler string checks
         success_patterns = [
-            r"PASS", r"pass", r"TEST PASSED", r"All tests passed",
-            r"Simulation completed successfully"
+            "PASS",
+            "pass", 
+            "TEST PASSED",
+            "All tests passed",
+            "Simulation completed successfully"
         ]
         
-        is_success = any(re.search(pattern, output, re.IGNORECASE) for pattern in success_patterns)
+        is_success = False
+        for pattern in success_patterns:
+            if pattern in output:
+                is_success = True
+                break
         
+        if is_success:
+            result = {"success": True, "output": output}
+            
+            # Save waveform
+            if generate_waveform and waveform_id:
+                vcd_file = tmp_path / "waveform.vcd"
+                if vcd_file.exists() and vcd_file.stat().st_size > 100:  # At least 100 bytes
+                    dest_vcd = WAVEFORM_DIR / f"{waveform_id}.vcd"
+                    shutil.copy2(vcd_file, dest_vcd)
+                    
+                    # Also create a JSON summary for quick access
+                    summary = generate_waveform_summary(vcd_file, waveform_id)
+                    if summary:
+                        summary_file = WAVEFORM_DIR / f"{waveform_id}.json"
+                        with open(summary_file, 'w') as f:
+                            json.dump(summary, f)
+                    
+                    result["waveform_id"] = waveform_id
+                    logger.info(f"Waveform saved: {waveform_id} ({vcd_file.stat().st_size} bytes)")
+            
+            return result
+        else:
+            # Try to extract meaningful error
+            error_lines = []
+            for line in output.split('\n'):
+                if 'error' in line.lower() or 'fail' in line.lower():
+                    error_lines.append(line)
+            
+            error_msg = '\n'.join(error_lines[:5]) if error_lines else "Test failed - check your logic"
+            
+            return {
+                "success": False,
+                "error": "Test Failed",
+                "output": output[:1500],
+                "details": error_msg
+            }
+        
+        # Simulate
+        try:
+            sim_result = subprocess.run(
+                ["vvp", str(output_exec)],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "success": False,
+                "error": "Simulation Timeout",
+                "details": "Simulation took too long. Possible infinite loop in testbench."
+            }
+        
+        output = sim_result.stdout + sim_result.stderr
+        
+        # Check for success patterns
+        # Check for success patterns - FIXED: removed regex pattern with \s
+        success_patterns = [
+            "PASS",
+            "pass", 
+            "TEST PASSED",
+            "All tests passed",
+            "Simulation completed successfully",
+            "Test passed",
+            "test passed"
+        ]
+        
+        is_success = any(pattern in output for pattern in success_patterns)
         if is_success:
             result = {"success": True, "output": output}
             
@@ -1472,14 +1546,22 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
 
 def clean_user_code(code: str) -> str:
     """Clean user code to prevent security issues"""
-    # Remove system calls
-    forbidden_patterns = [
-        r'\$system\s*\(', r'\$fopen\s*\(', r'\$fwrite\s*\(', 
-        r'exec\s*\(', r'system\s*\(', r'fork\s*'
+    # List of dangerous patterns to remove
+    dangerous_patterns = [
+        '$system(',
+        '$fopen(',
+        '$fwrite(',
+        'exec(',
+        'system(',
+        'fork',
+        '`system',
+        '`exec'
     ]
     
-    for pattern in forbidden_patterns:
-        code = re.sub(pattern, '// REMOVED: ' + pattern, code, flags=re.IGNORECASE)
+    # Also check for backtick system calls
+    for pattern in dangerous_patterns:
+        if pattern in code:
+            code = code.replace(pattern, '// REMOVED: ' + pattern)
     
     return code
 

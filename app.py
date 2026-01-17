@@ -187,41 +187,88 @@ class OAuthRequest(BaseModel):
 
 # Update the oauth_login function
 # In your app.py, update the Google OAuth login function:
-
 @app.post("/api/auth/oauth/login", response_model=Dict)
 async def oauth_login(oauth_data: OAuthRequest):
     """Handle OAuth login from Google with proper verification"""
     try:
+        logger.info(f"OAuth login attempt for provider: {oauth_data.provider}")
+        
         if oauth_data.provider != "google":
             raise HTTPException(
                 status_code=400,
                 detail="Only Google OAuth is supported"
             )
         
-        # Get Google Client ID from environment
-        GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "11871755691-4lp51g2ifrlbm2d6vkqlkbopu1085c6g.apps.googleusercontent.com")
-        
         if not oauth_data.id_token:
+            logger.error("No ID token provided")
             raise HTTPException(
                 status_code=400,
                 detail="ID token is required for Google OAuth"
             )
         
+        # Get and CLEAN Google Client ID
+        GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+        
+        if not GOOGLE_CLIENT_ID:
+            logger.warning("GOOGLE_CLIENT_ID not set in environment")
+            GOOGLE_CLIENT_ID = "11871755691-4lp51g2ifrlbm2d6vkqlkbopu1085c6g.apps.googleusercontent.com"
+        
+        # Clean the Client ID
+        GOOGLE_CLIENT_ID = clean_google_client_id(GOOGLE_CLIENT_ID)
+        
+        logger.info(f"Using Google Client ID: '{GOOGLE_CLIENT_ID}' (length: {len(GOOGLE_CLIENT_ID)})")
+        logger.info(f"ID token sample: {oauth_data.id_token[:50]}...")
+        
+        # Debug: Check what's in the token
+        try:
+            # Decode token without verification to see its contents
+            import jwt
+            decoded_unverified = jwt.decode(
+                oauth_data.id_token, 
+                options={"verify_signature": False}
+            )
+            logger.info(f"Token contents (unverified): aud={decoded_unverified.get('aud')}, iss={decoded_unverified.get('iss')}, email={decoded_unverified.get('email')}")
+        except:
+            logger.warning("Could not decode token for debugging")
+        
         try:
             # Verify Google ID token
+            logger.info("Verifying Google ID token...")
+            
             idinfo = id_token.verify_oauth2_token(
                 oauth_data.id_token,
                 google_requests.Request(),
                 GOOGLE_CLIENT_ID,
-                clock_skew_in_seconds=60
+                clock_skew_in_seconds=300
             )
+            
+            logger.info(f"✅ Token verified successfully!")
+            logger.info(f"Token audience: {idinfo.get('aud')}")
+            logger.info(f"Expected audience: {GOOGLE_CLIENT_ID}")
+            logger.info(f"Token issuer: {idinfo.get('iss')}")
+            logger.info(f"User email: {idinfo.get('email')}")
             
             # Validate required fields
             if 'email' not in idinfo:
+                logger.error("Token missing email field")
                 raise HTTPException(
                     status_code=400,
                     detail="Google token missing email"
                 )
+            
+            # Verify audience matches
+            token_audience = idinfo.get('aud')
+            if token_audience != GOOGLE_CLIENT_ID:
+                logger.warning(f"Audience mismatch. Token: '{token_audience}', Expected: '{GOOGLE_CLIENT_ID}'")
+                
+                # Check if it's just a newline issue
+                if token_audience == GOOGLE_CLIENT_ID.strip('\n\r'):
+                    logger.info("Audience mismatch is just whitespace, proceeding...")
+                else:
+                    raise HTTPException(
+                        status_code=401,
+                        detail=f"Token audience mismatch"
+                    )
             
             user_id = f"google_{idinfo['sub']}"
             email = idinfo['email']
@@ -230,11 +277,30 @@ async def oauth_login(oauth_data: OAuthRequest):
             logger.info(f"Google login successful for: {email}")
             
         except Exception as verify_error:
-            logger.error(f"Google token verification failed: {verify_error}")
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid Google token"
-            )
+            logger.error(f"❌ Google token verification failed: {str(verify_error)}")
+            
+            # Try with multiple audience options
+            logger.info("Trying with alternative audience checks...")
+            try:
+                # Try with stripped version
+                stripped_id = GOOGLE_CLIENT_ID.strip()
+                logger.info(f"Trying with stripped ID: '{stripped_id}'")
+                
+                idinfo = id_token.verify_oauth2_token(
+                    oauth_data.id_token,
+                    google_requests.Request(),
+                    stripped_id,
+                    clock_skew_in_seconds=300
+                )
+                logger.info("✅ Token verified with stripped ID!")
+                GOOGLE_CLIENT_ID = stripped_id
+                
+            except Exception as e2:
+                logger.error(f"Stripped ID also failed: {e2}")
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"Invalid Google token. Please check your Google Client ID configuration."
+                )
         
         # Create session
         session_token = create_session_token(user_id)
@@ -293,6 +359,20 @@ async def oauth_login(oauth_data: OAuthRequest):
             status_code=500,
             detail=f"Login failed: {str(e)}"
         )
+# Add this helper function at the top of your app.py
+def clean_google_client_id(client_id: str) -> str:
+    """Clean Google Client ID by removing newlines and extra spaces"""
+    if not client_id:
+        return client_id
+    
+    # Remove newlines, carriage returns, and extra spaces
+    cleaned = client_id.strip().replace('\n', '').replace('\r', '')
+    
+    # Log if cleaning was needed
+    if cleaned != client_id:
+        logger.warning(f"Cleaned Google Client ID. Before: '{client_id}', After: '{cleaned}'")
+    
+    return cleaned
 @app.get("/api/auth/oauth/providers", response_model=Dict)
 async def get_oauth_providers():
     """Get list of available OAuth providers and their config"""

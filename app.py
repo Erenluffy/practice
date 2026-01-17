@@ -658,6 +658,7 @@ async def get_problems(
     solved_only: bool = False,
     unsolved_only: bool = False,
     search: Optional[str] = None,
+    limit: int = 100,
     offset: int = 0
 ):
     """Get problems with filters and user progress"""

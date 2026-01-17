@@ -186,11 +186,12 @@ class OAuthRequest(BaseModel):
 
 
 # Update the oauth_login function
+# In your app.py, update the Google OAuth login function:
+
 @app.post("/api/auth/oauth/login", response_model=Dict)
 async def oauth_login(oauth_data: OAuthRequest):
-    """Handle OAuth login from Google"""
+    """Handle OAuth login from Google with proper verification"""
     try:
-        # Only support Google for now
         if oauth_data.provider != "google":
             raise HTTPException(
                 status_code=400,
@@ -200,19 +201,28 @@ async def oauth_login(oauth_data: OAuthRequest):
         # Get Google Client ID from environment
         GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "11871755691-4lp51g2ifrlbm2d6vkqlkbopu1085c6g.apps.googleusercontent.com")
         
-        # Try to verify the token as an ID token first
-        id_token_to_verify = oauth_data.id_token
+        if not oauth_data.id_token:
+            raise HTTPException(
+                status_code=400,
+                detail="ID token is required for Google OAuth"
+            )
         
         try:
             # Verify Google ID token
             idinfo = id_token.verify_oauth2_token(
-                id_token_to_verify,
+                oauth_data.id_token,
                 google_requests.Request(),
                 GOOGLE_CLIENT_ID,
-                clock_skew_in_seconds=60  # Allow 1 minute clock skew
+                clock_skew_in_seconds=60
             )
             
-            # Get user info from verified token
+            # Validate required fields
+            if 'email' not in idinfo:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Google token missing email"
+                )
+            
             user_id = f"google_{idinfo['sub']}"
             email = idinfo['email']
             name = idinfo.get('name', email.split('@')[0])
@@ -220,62 +230,13 @@ async def oauth_login(oauth_data: OAuthRequest):
             logger.info(f"Google login successful for: {email}")
             
         except Exception as verify_error:
-            logger.warning(f"ID token verification failed: {verify_error}")
-            
-            # If ID token verification fails, check if it's an access token
-            if oauth_data.access_token:
-                try:
-                    # Try to get user info using access token
-                    userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo"
-                    headers = {"Authorization": f"Bearer {oauth_data.access_token}"}
-                    
-                    import requests
-                    response = requests.get(userinfo_url, headers=headers, timeout=10)
-                    
-                    if response.status_code == 200:
-                        userinfo = response.json()
-                        user_id = f"google_{userinfo['sub']}"
-                        email = userinfo['email']
-                        name = userinfo.get('name', email.split('@')[0])
-                        logger.info(f"Got user info via access token for: {email}")
-                    else:
-                        raise HTTPException(
-                            status_code=401,
-                            detail="Invalid Google token"
-                        )
-                except Exception as access_error:
-                    logger.error(f"Access token validation failed: {access_error}")
-                    raise HTTPException(
-                        status_code=401,
-                        detail="Invalid Google credentials"
-                    )
-            else:
-                # Check if it's a demo token
-                if id_token_to_verify and id_token_to_verify.startswith("demo.") and id_token_to_verify.endswith(".demo"):
-                    try:
-                        demo_token = id_token_to_verify[5:-5]
-                        # Add padding if needed
-                        demo_token += '=' * (4 - len(demo_token) % 4)
-                        token_data = json.loads(base64.b64decode(demo_token).decode('utf-8'))
-                        
-                        user_id = f"google_{token_data.get('sub', str(uuid.uuid4())[:12])}"
-                        email = token_data.get('email', f"user{secrets.token_hex(6)}@example.com")
-                        name = token_data.get('name', email.split('@')[0])
-                        
-                        logger.info(f"Demo login for: {email}")
-                    except Exception as demo_error:
-                        logger.error(f"Demo token decode failed: {demo_error}")
-                        raise HTTPException(
-                            status_code=401,
-                            detail="Invalid demo token"
-                        )
-                else:
-                    raise HTTPException(
-                        status_code=401,
-                        detail="Invalid Google token"
-                    )
+            logger.error(f"Google token verification failed: {verify_error}")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid Google token"
+            )
         
-        # Create or find user
+        # Create session
         session_token = create_session_token(user_id)
         
         # Store user in memory
@@ -298,12 +259,12 @@ async def oauth_login(oauth_data: OAuthRequest):
             "expiry": datetime.now() + timedelta(hours=24)
         }
         
-        # Also store in memory user store
+        # Store in user database
         USER_SESSIONS[f"user_{user_id}"] = {
             "user_id": user_id,
             "email": email,
             "name": name,
-            "password_hash": None,  # No password for OAuth users
+            "password_hash": None,
             "created_at": datetime.utcnow().isoformat(),
             "last_login": datetime.utcnow().isoformat(),
             "progress": [],

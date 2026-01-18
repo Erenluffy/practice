@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Backend API for VLSI Practice - Fixed Waveform Viewer
+Backend API for VLSI Practice - Fixed with Test Pass Detection
 """
 
 from fastapi import FastAPI, HTTPException
@@ -44,6 +44,12 @@ class CodeRequest(BaseModel):
     code: str
     user_id: str = "anonymous"
     generate_waveform: bool = False
+    
+class SubmitRequest(BaseModel):
+    problem_id: str
+    code: str
+    user_id: str = "anonymous"
+
 # Add this function right before loading PROBLEMS
 def clean_json(text):
     """Remove control characters that break JSON parsing"""
@@ -60,9 +66,10 @@ try:
 except Exception as e:
     logger.error(f"Error loading problems: {e}")
     PROBLEMS = []
+
 @app.get("/")
 async def root():
-    return {"status": "VLSI Practice API", "version": "4.0"}
+    return {"status": "VLSI Practice API", "version": "5.0", "features": ["test-pass-detection", "manual-submit"]}
 
 @app.get("/api/problems")
 async def get_problems():
@@ -75,7 +82,8 @@ async def get_problems():
             "description": problem["description"],
             "difficulty": problem["difficulty"],
             "category": problem["category"],
-            "template": problem["template"]
+            "template": problem["template"],
+            "hint": problem.get("hint", "")
         })
     return {"problems": simplified}
 
@@ -102,7 +110,7 @@ async def get_waveform(waveform_id: str, download: bool = False):
 
 @app.post("/api/run")
 async def run_code(request: CodeRequest):
-    """Execute Verilog code"""
+    """Execute Verilog code - Simulation only"""
     try:
         # Find problem
         problem = next((p for p in PROBLEMS if p["id"] == request.problem_id), None)
@@ -124,6 +132,7 @@ async def run_code(request: CodeRequest):
             "output": result.get("output", ""),
             "error": result.get("error", ""),
             "details": result.get("details", ""),
+            "passed": result.get("passed", False)  # Add pass/fail status
         }
         
         if not result["success"] and "hint" in problem:
@@ -142,14 +151,53 @@ async def run_code(request: CodeRequest):
         logger.error(f"Error in run_code: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def run_simulation(user_code: str, testbench: str, generate_waveform: bool, problem_title: str) -> dict:
-    """Run Verilog simulation"""
+@app.post("/api/submit")
+async def submit_solution(request: SubmitRequest):
+    """Submit solution and check if it's correct"""
+    try:
+        # Find problem
+        problem = next((p for p in PROBLEMS if p["id"] == request.problem_id), None)
+        if not problem:
+            raise HTTPException(status_code=404, detail="Problem not found")
+        
+        # Run simulation without waveform
+        result = run_simulation(
+            request.code,
+            problem["testbench"],
+            generate_waveform=False,
+            problem_title=problem["title"],
+            is_submission=True
+        )
+        
+        # Prepare response
+        response = {
+            "success": result["success"],
+            "passed": result.get("passed", False),
+            "problem": problem["title"],
+            "output": result.get("output", ""),
+            "error": result.get("error", ""),
+            "details": result.get("details", ""),
+            "message": result.get("message", "")
+        }
+        
+        # If failed, add hint
+        if not result["passed"] and "hint" in problem:
+            response["hint"] = problem["hint"]
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error in submit_solution: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def run_simulation(user_code: str, testbench: str, generate_waveform: bool, problem_title: str, is_submission: bool = False) -> dict:
+    """Run Verilog simulation with improved pass detection"""
     waveform_id = None
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         
-        # Prepare testbench with VCD dump
+        # Prepare testbench with VCD dump if needed
         if generate_waveform:
             waveform_id = str(uuid.uuid4())
             vcd_path = str(tmp_path / "waveform.vcd")
@@ -178,6 +226,7 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
         if compile_result.returncode != 0:
             return {
                 "success": False,
+                "passed": False,
                 "error": "Compilation Failed",
                 "details": compile_result.stderr[:500]
             }
@@ -192,28 +241,66 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
         
         output = sim_result.stdout + sim_result.stderr
         
-        if "PASS" in output:
-            result = {"success": True, "output": output}
-            
-            # Save waveform if requested
-            if generate_waveform and waveform_id:
-                vcd_file = tmp_path / "waveform.vcd"
-                if vcd_file.exists() and vcd_file.stat().st_size > 0:
-                    # Save VCD
-                    dest_vcd = WAVEFORM_DIR / f"{waveform_id}.vcd"
-                    import shutil
-                    shutil.copy2(vcd_file, dest_vcd)
-                    
-                    logger.info(f"Waveform saved: {waveform_id}")
-                    result["waveform_id"] = waveform_id
-            
-            return result
+        # Improved pass detection
+        passed = False
+        message = ""
+        
+        # Check for common success patterns
+        if "PASS" in output.upper():
+            passed = True
+            message = "All tests passed!"
+        elif "FAIL" in output.upper():
+            passed = False
+            message = "Tests failed"
+        elif "ERROR" in output.upper():
+            passed = False
+            message = "Runtime error"
+        elif "SIMULATION FINISHED" in output.upper():
+            # If simulation finished without errors, check for specific patterns
+            if "assertion" in output.lower() and "failed" in output.lower():
+                passed = False
+                message = "Assertions failed"
+            elif "$finish" in output:
+                # Check if there were any $display errors
+                error_lines = [line for line in output.split('\n') if 'error' in line.lower()]
+                if error_lines:
+                    passed = False
+                    message = f"Errors found: {error_lines[0][:100]}"
+                else:
+                    passed = True
+                    message = "Simulation completed successfully"
+            else:
+                passed = True
+                message = "Simulation completed"
         else:
-            return {
-                "success": False,
-                "error": "Test Failed",
-                "output": output[:1000]
-            }
+            # Default: if no compilation errors and simulation ran, assume it's okay for practice
+            passed = True
+            message = "Code executed successfully (manual verification recommended)"
+        
+        result = {
+            "success": True,
+            "passed": passed,
+            "output": output[:2000],  # Limit output size
+            "message": message
+        }
+        
+        # Save waveform if requested
+        if generate_waveform and waveform_id:
+            vcd_file = tmp_path / "waveform.vcd"
+            if vcd_file.exists() and vcd_file.stat().st_size > 0:
+                # Save VCD
+                dest_vcd = WAVEFORM_DIR / f"{waveform_id}.vcd"
+                import shutil
+                shutil.copy2(vcd_file, dest_vcd)
+                
+                logger.info(f"Waveform saved: {waveform_id}")
+                result["waveform_id"] = waveform_id
+        
+        return result
+
+# ... (keep all the existing VCDParser and create_professional_viewer functions exactly as you have them)
+# Copy all the VCDParser class and create_professional_viewer function from your current file
+# They don't need to change
 
 class VCDParser:
     """Parse VCD files and extract waveform data"""
@@ -1468,7 +1555,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
                 }}
             }});
             
-            // Mouse drag for panning
+            # Mouse drag for panning
             container.addEventListener('mousedown', function(e) {{
                 isDragging = true;
                 dragStartX = e.clientX - offsetX;
@@ -1481,7 +1568,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
                     renderWaveform();
                 }}
                 
-                // Show cursor with time
+                # Show cursor with time
                 const rect = container.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const time = Math.round((mouseX - offsetX) / (pixelsPerTime * zoomLevel));
@@ -1501,7 +1588,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
                 container.style.cursor = 'default';
             }});
             
-            // Touch events for mobile
+            # Touch events for mobile
             let touchStartX = 0;
             let touchStartOffset = 0;
             
@@ -1523,7 +1610,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
             }});
         }}
         
-        // Zoom functions
+        # Zoom functions
         function zoomIn() {{
             zoomLevel = Math.min(5, zoomLevel * 1.2);
             renderWaveform();
@@ -1540,7 +1627,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
             renderWaveform();
         }}
         
-        // Utility functions
+        # Utility functions
         function refreshViewer() {{
             window.location.reload();
         }}

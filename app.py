@@ -83,7 +83,10 @@ async def get_problems():
             "difficulty": problem["difficulty"],
             "category": problem["category"],
             "template": problem["template"],
-            "hint": problem.get("hint", "")
+            "hint": problem.get("hint", ""),
+            'examples': problem.get('examples', []),  # Added
+            'constraints': problem.get('constraints', [])  # Added - THIS IS THE KEY!
+
         })
     return {"problems": simplified}
 

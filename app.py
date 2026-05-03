@@ -279,10 +279,14 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
             waveform_id = str(uuid.uuid4())
             vcd_path = str(tmp_path / "waveform.vcd").replace("\\", "/")
             if "$dumpfile" not in testbench:
+                # Detect actual top-level testbench module name
+                tb_mod_match = re.findall(r'^\s*module\s+(\w+)', testbench, re.MULTILINE)
+                tb_mod = tb_mod_match[-1] if tb_mod_match else None
+                dumpvars_line = f'    $dumpvars(0, {tb_mod});\n' if tb_mod else '    $dumpvars(0);\n'
                 dump_block = (
                     f'\ninitial begin\n'
                     f'    $dumpfile("{vcd_path}");\n'
-                    f'    $dumpvars(0, tb);\n'   # scoped to testbench module
+                    f'{dumpvars_line}'
                     f'end\n'
                 )
                 testbench = dump_block + testbench

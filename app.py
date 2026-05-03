@@ -3,17 +3,25 @@
 Backend API for VLSI Practice - Fixed with Test Pass Detection
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import subprocess
 import tempfile
 import os
+import sys
 import json
 import uuid
+import shutil
 import logging
 import re
+import asyncio
+import time
+from threading import Thread
 from datetime import datetime
 from pathlib import Path
 
@@ -21,7 +29,16 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Rate limiter (per IP)
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="VLSI Practice API")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Concurrency semaphore — max 3 simulations running at once
+MAX_CONCURRENT_SIMS = 3
+sim_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SIMS)
 
 # Create waveform directory
 WAVEFORM_DIR = Path("/tmp/waveforms")
@@ -37,6 +54,24 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+
+# Background waveform cleanup — delete VCDs older than 1 hour
+def _cleanup_waveforms():
+    while True:
+        try:
+            time.sleep(3600)
+            now = time.time()
+            for f in WAVEFORM_DIR.glob("*.vcd"):
+                try:
+                    if now - f.stat().st_mtime > 3600:
+                        f.unlink()
+                        logger.info(f"Cleaned up old waveform: {f.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete {f.name}: {e}")
+        except Exception as e:
+            logger.error(f"Waveform cleanup error: {e}")
+
+Thread(target=_cleanup_waveforms, daemon=True).start()
 
 # Models
 class CodeRequest(BaseModel):
@@ -84,9 +119,9 @@ async def get_problems():
             "category": problem["category"],
             "template": problem["template"],
             "hint": problem.get("hint", ""),
-            'examples': problem.get('examples', []),  # Added
-            'constraints': problem.get('constraints', [])  # Added - THIS IS THE KEY!
-
+            'examples': problem.get('examples', []),
+            'constraints': problem.get('constraints', []),
+            'test_cases': problem.get('test_cases', []),
         })
     return {"problems": simplified}
 
@@ -112,7 +147,8 @@ async def get_waveform(waveform_id: str, download: bool = False):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/run")
-async def run_code(request: CodeRequest):
+@limiter.limit("10/minute")
+async def run_code(http_request: Request, request: CodeRequest):
     """Execute Verilog code - Simulation only"""
     try:
         # Find problem
@@ -120,13 +156,24 @@ async def run_code(request: CodeRequest):
         if not problem:
             raise HTTPException(status_code=404, detail="Problem not found")
         
-        # Run simulation
-        result = run_simulation(
-            request.code,
-            problem["testbench"],
-            request.generate_waveform,
-            problem["title"]
-        )
+        # Semaphore: max MAX_CONCURRENT_SIMS simulations at once, 15s queue timeout
+        try:
+            await asyncio.wait_for(sim_semaphore.acquire(), timeout=15.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=503,
+                detail="Server is busy. Please try again in a moment."
+            )
+        
+        try:
+            result = run_simulation(
+                request.code,
+                problem["testbench"],
+                request.generate_waveform,
+                problem["title"]
+            )
+        finally:
+            sim_semaphore.release()
         
         # Prepare response
         response = {
@@ -135,7 +182,7 @@ async def run_code(request: CodeRequest):
             "output": result.get("output", ""),
             "error": result.get("error", ""),
             "details": result.get("details", ""),
-            "passed": result.get("passed", False)  # Add pass/fail status
+            "passed": result.get("passed", False)
         }
         
         if not result["success"] and "hint" in problem:
@@ -150,12 +197,15 @@ async def run_code(request: CodeRequest):
         
         return response
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in run_code: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/submit")
-async def submit_solution(request: SubmitRequest):
+@limiter.limit("10/minute")
+async def submit_solution(http_request: Request, request: SubmitRequest):
     """Submit solution and check if it's correct"""
     try:
         # Find problem
@@ -163,14 +213,25 @@ async def submit_solution(request: SubmitRequest):
         if not problem:
             raise HTTPException(status_code=404, detail="Problem not found")
         
-        # Run simulation without waveform
-        result = run_simulation(
-            request.code,
-            problem["testbench"],
-            generate_waveform=False,
-            problem_title=problem["title"],
-            is_submission=True
-        )
+        # Semaphore: max MAX_CONCURRENT_SIMS simulations at once, 15s queue timeout
+        try:
+            await asyncio.wait_for(sim_semaphore.acquire(), timeout=15.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=503,
+                detail="Server is busy. Please try again in a moment."
+            )
+        
+        try:
+            result = run_simulation(
+                request.code,
+                problem["testbench"],
+                generate_waveform=False,
+                problem_title=problem["title"],
+                is_submission=True
+            )
+        finally:
+            sim_semaphore.release()
         
         # Prepare response
         response = {
@@ -189,34 +250,48 @@ async def submit_solution(request: SubmitRequest):
         
         return response
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in submit_solution: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def _set_resource_limits():
+    """Set CPU + memory limits on the child process (Linux only)"""
+    try:
+        import resource
+        resource.setrlimit(resource.RLIMIT_CPU, (10, 10))          # 10s CPU time
+        resource.setrlimit(resource.RLIMIT_AS,  (256 * 1024 * 1024, 256 * 1024 * 1024))  # 256MB RAM
+    except Exception:
+        pass  # Windows or unsupported platform — skip silently
+
+
 def run_simulation(user_code: str, testbench: str, generate_waveform: bool, problem_title: str, is_submission: bool = False) -> dict:
     """Run Verilog simulation with improved pass detection"""
     waveform_id = None
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        
-        # Prepare testbench with VCD dump if needed
+
+        # FIX: Prepend a dedicated initial block for VCD dump instead of
+        # patching "initial begin" (which breaks multi-block testbenches)
         if generate_waveform:
             waveform_id = str(uuid.uuid4())
-            vcd_path = str(tmp_path / "waveform.vcd")
-            
-            # Add dump commands to testbench
+            vcd_path = str(tmp_path / "waveform.vcd").replace("\\", "/")
             if "$dumpfile" not in testbench:
-                testbench = testbench.replace(
-                    "initial begin",
-                    f"initial begin\n    $dumpfile(\"{vcd_path}\");\n    $dumpvars(0);"
+                dump_block = (
+                    f'\ninitial begin\n'
+                    f'    $dumpfile("{vcd_path}");\n'
+                    f'    $dumpvars(0, tb);\n'   # scoped to testbench module
+                    f'end\n'
                 )
-        
+                testbench = dump_block + testbench
+
         # Combine source
         source = f"`timescale 1ns/1ps\n{user_code}\n{testbench}"
         source_file = tmp_path / "design.v"
         source_file.write_text(source)
-        
+
         # Compile
         output_exec = tmp_path / "sim"
         compile_result = subprocess.run(
@@ -225,7 +300,7 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
             text=True,
             timeout=30
         )
-        
+
         if compile_result.returncode != 0:
             return {
                 "success": False,
@@ -233,22 +308,39 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
                 "error": "Compilation Failed",
                 "details": compile_result.stderr[:500]
             }
-        
-        # Simulate
-        sim_result = subprocess.run(
-            ["vvp", str(output_exec)],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
+
+        # Simulate with resource limits (Linux) and hard 20s wall-clock timeout
+        try:
+            sim_result = subprocess.run(
+                ["vvp", str(output_exec)],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                preexec_fn=_set_resource_limits if sys.platform != "win32" else None
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "success": False,
+                "passed": False,
+                "error": "Simulation Timeout",
+                "details": "Simulation exceeded 20 seconds. Check for infinite loops."
+            }
+
+        # FIX: Check vvp exit code before trusting output
+        if sim_result.returncode not in (0, 1):  # vvp uses 1 for normal $finish
+            return {
+                "success": False,
+                "passed": False,
+                "error": "Simulation Runtime Error",
+                "details": (sim_result.stderr or sim_result.stdout)[:500]
+            }
+
         output = sim_result.stdout + sim_result.stderr
-        
-        # Improved pass detection
+
+        # Pass/fail detection
         passed = False
         message = ""
-        
-        # Check for common success patterns
+
         if "PASS" in output.upper():
             passed = True
             message = "All tests passed!"
@@ -259,12 +351,10 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
             passed = False
             message = "Runtime error"
         elif "SIMULATION FINISHED" in output.upper():
-            # If simulation finished without errors, check for specific patterns
             if "assertion" in output.lower() and "failed" in output.lower():
                 passed = False
                 message = "Assertions failed"
             elif "$finish" in output:
-                # Check if there were any $display errors
                 error_lines = [line for line in output.split('\n') if 'error' in line.lower()]
                 if error_lines:
                     passed = False
@@ -276,34 +366,28 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
                 passed = True
                 message = "Simulation completed"
         else:
-            # Default: if no compilation errors and simulation ran, assume it's okay for practice
             passed = True
             message = "Code executed successfully (manual verification recommended)"
-        
+
         result = {
             "success": True,
             "passed": passed,
-            "output": output[:2000],  # Limit output size
+            "output": output[:2000],
             "message": message
         }
-        
-        # Save waveform if requested
+
+        # Save waveform — only if file exists and has content
         if generate_waveform and waveform_id:
             vcd_file = tmp_path / "waveform.vcd"
             if vcd_file.exists() and vcd_file.stat().st_size > 0:
-                # Save VCD
                 dest_vcd = WAVEFORM_DIR / f"{waveform_id}.vcd"
-                import shutil
                 shutil.copy2(vcd_file, dest_vcd)
-                
-                logger.info(f"Waveform saved: {waveform_id}")
+                logger.info(f"Waveform saved: {waveform_id} ({vcd_file.stat().st_size} bytes)")
                 result["waveform_id"] = waveform_id
-        
-        return result
+            else:
+                logger.warning(f"VCD file missing or empty for {problem_title}")
 
-# ... (keep all the existing VCDParser and create_professional_viewer functions exactly as you have them)
-# Copy all the VCDParser class and create_professional_viewer function from your current file
-# They don't need to change
+        return result
 
 class VCDParser:
     """Parse VCD files and extract waveform data"""
@@ -1217,6 +1301,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
         </div>
     </div>
     
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <script>
         // Global variables
         const signalsData = {signals_json};
@@ -1558,7 +1643,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
                 }}
             }});
             
-            # Mouse drag for panning
+            // Mouse drag for panning
             container.addEventListener('mousedown', function(e) {{
                 isDragging = true;
                 dragStartX = e.clientX - offsetX;
@@ -1571,7 +1656,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
                     renderWaveform();
                 }}
                 
-                # Show cursor with time
+                // Show cursor with time
                 const rect = container.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const time = Math.round((mouseX - offsetX) / (pixelsPerTime * zoomLevel));
@@ -1591,7 +1676,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
                 container.style.cursor = 'default';
             }});
             
-            # Touch events for mobile
+            // Touch events for mobile
             let touchStartX = 0;
             let touchStartOffset = 0;
             
@@ -1613,7 +1698,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
             }});
         }}
         
-        # Zoom functions
+        // Zoom functions
         function zoomIn() {{
             zoomLevel = Math.min(5, zoomLevel * 1.2);
             renderWaveform();
@@ -1630,7 +1715,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
             renderWaveform();
         }}
         
-        # Utility functions
+        // Utility functions
         function refreshViewer() {{
             window.location.reload();
         }}
@@ -1681,11 +1766,8 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
    - Copy waveform ID for sharing`);
         }}
     </script>
-    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 </body>
 </html>'''
-    
-    return html
 
 @app.get("/api/health")
 async def health_check():
@@ -1696,7 +1778,123 @@ async def health_check():
         "problems": len(PROBLEMS)
     }
 
+
+class CustomRunRequest(BaseModel):
+    user_code: str
+    testbench: str
+    generate_waveform: bool = False
+
+
+@app.post("/api/dev/run-custom")
+@limiter.limit("20/minute")
+async def run_custom(http_request: Request, request: CustomRunRequest):
+    """Run arbitrary Verilog code + testbench — no problem_id needed (Sandbox/Builder)"""
+    try:
+        try:
+            await asyncio.wait_for(sim_semaphore.acquire(), timeout=15.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=503, detail="Server busy. Try again in a moment.")
+
+        try:
+            result = run_simulation(
+                request.user_code,
+                request.testbench,
+                request.generate_waveform,
+                problem_title="custom"
+            )
+        finally:
+            sim_semaphore.release()
+
+        response = {
+            "success": result["success"],
+            "passed": result.get("passed", False),
+            "output": result.get("output", ""),
+            "error": result.get("error", ""),
+            "details": result.get("details", ""),
+            "message": result.get("message", "")
+        }
+        if "waveform_id" in result:
+            response["waveform_id"] = result["waveform_id"]
+            response["waveform_url"] = f"/api/waveform/{result['waveform_id']}"
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in run_custom: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/dev/audit")
+async def audit_problems():
+    """Batch-test all problems — compiles + runs each testbench, returns pass/fail table"""
+    if not PROBLEMS:
+        return {"results": [], "summary": {"total": 0, "pass": 0, "fail": 0}}
+
+    results = []
+    passed_count = 0
+
+    for problem in PROBLEMS:
+        pid = problem.get("id", "unknown")
+        title = problem.get("title", pid)
+        difficulty = problem.get("difficulty", "unknown")
+        testbench = problem.get("testbench", "")
+        template = problem.get("template", "")
+
+        if not testbench:
+            results.append({
+                "id": pid, "title": title, "difficulty": difficulty,
+                "status": "fail", "time": 0, "notes": "No testbench defined"
+            })
+            continue
+
+        start = time.time()
+        try:
+            # Audit mode: run template code (empty shell) against testbench
+            # We're checking the testbench itself compiles and runs cleanly
+            result = run_simulation(
+                user_code=template,
+                testbench=testbench,
+                generate_waveform=False,
+                problem_title=title
+            )
+            elapsed = round(time.time() - start, 2)
+
+            if not result["success"]:
+                status = "fail"
+                notes = result.get("details", result.get("error", ""))[:120]
+            else:
+                status = "pass"
+                notes = ""
+            
+            if status == "pass":
+                passed_count += 1
+
+            results.append({
+                "id": pid, "title": title, "difficulty": difficulty,
+                "status": status, "time": elapsed, "notes": notes
+            })
+
+        except Exception as e:
+            elapsed = round(time.time() - start, 2)
+            results.append({
+                "id": pid, "title": title, "difficulty": difficulty,
+                "status": "fail", "time": elapsed, "notes": str(e)[:120]
+            })
+
+    return {
+        "results": results,
+        "summary": {
+            "total": len(PROBLEMS),
+            "pass": passed_count,
+            "fail": len(PROBLEMS) - passed_count
+        }
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port, workers=1)
+    

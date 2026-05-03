@@ -125,6 +125,34 @@ async def get_problems():
         })
     return {"problems": simplified}
 
+@app.get("/api/waveform/{waveform_id}/data")
+async def get_waveform_data(waveform_id: str):
+    """Return parsed VCD waveform data as JSON for frontend viewer"""
+    try:
+        vcd_path = WAVEFORM_DIR / f"{waveform_id}.vcd"
+        if not vcd_path.exists():
+            raise HTTPException(status_code=404, detail="Waveform not found")
+        parser = VCDParser(vcd_path)
+        if not parser.parse():
+            raise HTTPException(status_code=500, detail="VCD parse failed")
+        colors = ['#FF5252','#4CAF50','#2196F3','#FF9800','#9C27B0',
+                  '#00BCD4','#8BC34A','#FF5722','#607D8B','#795548']
+        signals = parser.signals[:30]
+        for i, sig in enumerate(signals):
+            sig['color'] = colors[i % len(colors)]
+        waveform = {sig['name']: parser.waveform_data[sig['name']] for sig in signals}
+        return {
+            "signals": signals,
+            "waveform": waveform,
+            "timescale": parser.timescale,
+            "max_time": parser.max_time
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/waveform/{waveform_id}")
 async def get_waveform(waveform_id: str, download: bool = False):
     """Serve waveform with professional HTML viewer"""

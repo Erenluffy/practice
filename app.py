@@ -313,7 +313,7 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
                     testbench
                 )
             else:
-                # Prepend a dedicated dump block — detect actual TB module name
+                # Inject dump block INSIDE the last module, just before its endmodule
                 tb_mod_match = re.findall(r'^\s*module\s+(\w+)', testbench, re.MULTILINE)
                 tb_mod = tb_mod_match[-1] if tb_mod_match else None
                 dumpvars_line = f'    $dumpvars(0, {tb_mod});\n' if tb_mod else '    $dumpvars(0);\n'
@@ -323,10 +323,18 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
                     f'{dumpvars_line}'
                     f'end\n'
                 )
-                testbench = dump_block + testbench
+                # Insert before the last endmodule in testbench
+                last_end = testbench.rfind('endmodule')
+                if last_end != -1:
+                    testbench = testbench[:last_end] + dump_block + testbench[last_end:]
+                else:
+                    testbench = testbench + dump_block
+
+        # Strip timescale from testbench to avoid duplicate (we add one below)
+        testbench_clean = re.sub(r'`timescale\s+\S+/\S+\s*\n?', '', testbench)
 
         # Combine source
-        source = f"`timescale 1ns/1ps\n{user_code}\n{testbench}"
+        source = f"`timescale 1ns/1ps\n{user_code}\n{testbench_clean}"
         source_file = tmp_path / "design.v"
         source_file.write_text(source)
 

@@ -273,13 +273,19 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
 
-        # FIX: Prepend a dedicated initial block for VCD dump instead of
-        # patching "initial begin" (which breaks multi-block testbenches)
+        # Inject VCD dump so waveform viewer works
         if generate_waveform:
             waveform_id = str(uuid.uuid4())
             vcd_path = str(tmp_path / "waveform.vcd").replace("\\", "/")
-            if "$dumpfile" not in testbench:
-                # Detect actual top-level testbench module name
+            if "$dumpfile" in testbench:
+                # Testbench already calls $dumpfile — just rewrite the path to our temp dir
+                testbench = re.sub(
+                    r'\$dumpfile\s*\(\s*"[^"]*"\s*\)',
+                    f'$dumpfile("{vcd_path}")',
+                    testbench
+                )
+            else:
+                # Prepend a dedicated dump block — detect actual TB module name
                 tb_mod_match = re.findall(r'^\s*module\s+(\w+)', testbench, re.MULTILINE)
                 tb_mod = tb_mod_match[-1] if tb_mod_match else None
                 dumpvars_line = f'    $dumpvars(0, {tb_mod});\n' if tb_mod else '    $dumpvars(0);\n'

@@ -52,7 +52,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
 )
 
 # Background waveform cleanup — delete VCDs older than 1 hour
@@ -148,11 +148,11 @@ async def get_waveform(waveform_id: str, download: bool = False):
 
 @app.post("/api/run")
 @limiter.limit("10/minute")
-async def run_code(http_request: Request, request: CodeRequest):
+async def run_code(request: Request, body: CodeRequest):
     """Execute Verilog code - Simulation only"""
     try:
         # Find problem
-        problem = next((p for p in PROBLEMS if p["id"] == request.problem_id), None)
+        problem = next((p for p in PROBLEMS if p["id"] == body.problem_id), None)
         if not problem:
             raise HTTPException(status_code=404, detail="Problem not found")
         
@@ -167,9 +167,9 @@ async def run_code(http_request: Request, request: CodeRequest):
         
         try:
             result = run_simulation(
-                request.code,
+                body.code,
                 problem["testbench"],
-                request.generate_waveform,
+                body.generate_waveform,
                 problem["title"]
             )
         finally:
@@ -205,11 +205,11 @@ async def run_code(http_request: Request, request: CodeRequest):
 
 @app.post("/api/submit")
 @limiter.limit("10/minute")
-async def submit_solution(http_request: Request, request: SubmitRequest):
+async def submit_solution(request: Request, body: SubmitRequest):
     """Submit solution and check if it's correct"""
     try:
         # Find problem
-        problem = next((p for p in PROBLEMS if p["id"] == request.problem_id), None)
+        problem = next((p for p in PROBLEMS if p["id"] == body.problem_id), None)
         if not problem:
             raise HTTPException(status_code=404, detail="Problem not found")
         
@@ -224,7 +224,7 @@ async def submit_solution(http_request: Request, request: SubmitRequest):
         
         try:
             result = run_simulation(
-                request.code,
+                body.code,
                 problem["testbench"],
                 generate_waveform=False,
                 problem_title=problem["title"],
@@ -295,7 +295,7 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
         # Compile
         output_exec = tmp_path / "sim"
         compile_result = subprocess.run(
-            ["iverilog", "-o", str(output_exec), str(source_file)],
+            ["iverilog", "-g2012", "-o", str(output_exec), str(source_file)],
             capture_output=True,
             text=True,
             timeout=30
@@ -1787,7 +1787,7 @@ class CustomRunRequest(BaseModel):
 
 @app.post("/api/dev/run-custom")
 @limiter.limit("20/minute")
-async def run_custom(http_request: Request, request: CustomRunRequest):
+async def run_custom(request: Request, body: CustomRunRequest):
     """Run arbitrary Verilog code + testbench — no problem_id needed (Sandbox/Builder)"""
     try:
         try:
@@ -1797,9 +1797,9 @@ async def run_custom(http_request: Request, request: CustomRunRequest):
 
         try:
             result = run_simulation(
-                request.user_code,
-                request.testbench,
-                request.generate_waveform,
+                body.user_code,
+                body.testbench,
+                body.generate_waveform,
                 problem_title="custom"
             )
         finally:

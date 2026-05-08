@@ -331,8 +331,9 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
                     testbench = testbench + dump_block
 
         # Strip timescale from both user_code and testbench — we inject one canonical
-        # `timescale 1ns/1ps at the top to avoid "duplicate timescale" / port-decl errors
-        timescale_re = re.compile(r'`timescale\s+\S+/\S+[ \t]*\n?')
+        # `timescale 1ns/1ps at the top to avoid "duplicate timescale" / port-decl errors.
+        # Handles all spacing variants: 1ns/1ps  1ns / 1ps  1 ns / 1 ps  etc.
+        timescale_re = re.compile(r'`timescale\s+[\w.]+\s*/\s*[\w.]+[ \t]*\r?\n?')
         user_code_clean = timescale_re.sub('', user_code)
         testbench_clean = timescale_re.sub('', testbench)
 

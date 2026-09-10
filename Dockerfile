@@ -24,7 +24,7 @@ WORKDIR /app
 
 # Copy requirements first (for better caching)
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Copy application code
 COPY . .
@@ -37,7 +37,7 @@ ENV PYTHONPATH=/app
 ENV PORT=8000
 
 # Use gunicorn for production (Render.com prefers this)
-RUN pip3 install gunicorn
+RUN pip3 install --no-cache-dir --break-system-packages gunicorn
 
 # Run the application with gunicorn
 CMD ["gunicorn", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "app:app", "--bind", "0.0.0.0:8000"]

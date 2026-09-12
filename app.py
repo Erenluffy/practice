@@ -140,6 +140,145 @@ async def get_problems():
         })
     return {"problems": simplified}
 
+
+# Canonical category metadata — display title, sort order, icon, colour, blurb.
+# Keeps the /api/categories response stable and consistently ordered.
+CATEGORY_META = {
+    "basic_gates": (
+        "Basic Logic Gates", 1, "fas fa-gamepad", "#4f46e5",
+        "Design the fundamental gates — AND, OR, NOT, NAND, NOR, XOR, XNOR. "
+        "The building blocks every other circuit is made from."),
+    "arithmetic": (
+        "Arithmetic Circuits", 2, "fas fa-calculator", "#ef4444",
+        "Build adders, subtractors and multipliers, from half/full adders through "
+        "ripple-carry and carry look-ahead to array multipliers."),
+    "combinational": (
+        "Combinational Logic", 3, "fas fa-project-diagram", "#10b981",
+        "Multiplexers, demultiplexers, encoders, decoders, comparators and shifters — "
+        "data selection, routing and manipulation with no clock."),
+    "parity": (
+        "Parity & Error Detection", 4, "fas fa-shield-alt", "#8b5cf6",
+        "Parity generators and checkers for single-bit error detection, plus the "
+        "XOR reduction techniques behind them."),
+    "converters": (
+        "Code Converters", 5, "fas fa-exchange-alt", "#06b6d4",
+        "Binary to Gray and back, BCD, excess-3, seven-segment and one-hot encodings — "
+        "translation between numeric representations."),
+    "sequential": (
+        "Sequential Logic", 6, "fas fa-history", "#f59e0b",
+        "Latches and flip-flops (D, JK, T, SR) with synchronous and asynchronous resets, "
+        "registers and edge detectors."),
+    "shift_registers": (
+        "Shift Registers", 7, "fas fa-arrow-right", "#3b82f6",
+        "SISO, SIPO, PISO and PIPO registers, barrel shifters and shift-register based "
+        "datapaths."),
+    "counters": (
+        "Counters", 8, "fas fa-sort-numeric-up", "#ec4899",
+        "Ripple, synchronous, up/down, ring, Johnson and modulo-N counters, plus "
+        "arbitrary sequence generators."),
+    "pattern_generation": (
+        "Pattern & Sequence Generation", 9, "fas fa-wave-square", "#0ea5e9",
+        "Walking-one, ring, triangle and other deterministic bit patterns — "
+        "stimulus and carrier generators built from a state register."),
+    "timing": (
+        "Clocking & Timing", 10, "fas fa-clock", "#14b8a6",
+        "Clock dividers, frequency dividers, CDC synchronisers and timing-related "
+        "building blocks."),
+    "memory": (
+        "Memory Elements", 11, "fas fa-memory", "#a855f7",
+        "RAM, ROM, register files, stacks and FIFOs — storage elements and the "
+        "handshaking around them."),
+    "fsm": (
+        "Finite State Machines", 12, "fas fa-sitemap", "#22c55e",
+        "Mealy and Moore machines for sequence detection, traffic lights, arbiters and "
+        "other state-based controllers."),
+    "testbench": (
+        "Testbench & Simulation", 13, "fas fa-vial", "#f97316",
+        "Writing stimulus, clock generation, checkers and self-checking testbenches — "
+        "the verification side of RTL design."),
+    "advanced": (
+        "Advanced Circuits", 14, "fas fa-rocket", "#6366f1",
+        "ALUs, arbiters, pipelines and other larger designs that combine the earlier "
+        "building blocks."),
+    "interview_puzzle": (
+        "Interview Puzzles", 15, "fas fa-brain", "#d946ef",
+        "The questions that actually get asked in hardware interviews — CDC "
+        "synchronisers, arbiters, divide-by-N with 50% duty, Hamming codes and the "
+        "classic \"how would you do this in RTL?\" brain-teasers."),
+    "real_world": (
+        "Real-World Interfaces", 16, "fas fa-industry", "#0d9488",
+        "Protocols and interfaces as they appear in production silicon — UART, SPI, "
+        "I2C, handshakes and bus behaviour."),
+    "story": (
+        "Applied Scenarios", 17, "fas fa-book-open", "#f43f5e",
+        "Everyday systems described as a story — vending machines, traffic lights, "
+        "washing machines, ATMs — then designed as a real RTL block."),
+}
+_DEFAULT_CAT_META = ("Other", 99, "fas fa-microchip", "#64748b", "")
+
+
+def _category_list():
+    """Build the canonical category list from the loaded problems."""
+    seen = {}
+    for p in PROBLEMS:
+        cid = (p.get("category") or "").strip()
+        if not cid:
+            continue
+        seen[cid] = seen.get(cid, 0) + 1
+    cats = []
+    for cid, count in seen.items():
+        meta = CATEGORY_META.get(cid)
+        if meta:
+            title, order, icon, color, blurb = meta
+        else:
+            title = cid.replace("_", " ").title()
+            order, icon, color, blurb = _DEFAULT_CAT_META[1:]
+        if not blurb:
+            blurb = f"{count} problem{'s' if count != 1 else ''} in this topic."
+        cats.append({
+            "id": cid,
+            "title": title,
+            "description": blurb,
+            "icon": icon,
+            "color": color,
+            "order": order,
+            "problem_count": count,
+        })
+    cats.sort(key=lambda c: (c["order"], c["title"]))
+    return cats
+
+
+@app.get("/api/categories")
+async def get_categories():
+    """Return the canonical problem categories (id, title, order, count)."""
+    cats = _category_list()
+    return {"categories": cats, "total": len(cats)}
+
+
+@app.get("/api/svproblems")
+async def get_sv_problems():
+    """SystemVerilog problem set.
+
+    This deployment ships Verilog problems only; SystemVerilog problems live in
+    the separate SV backend. Return an empty, well-formed list so the SV pages
+    fall back gracefully instead of receiving a 404.
+    """
+    sv = [p for p in PROBLEMS if str(p.get("language", "")).lower() == "systemverilog"]
+    simplified = [{
+        "id": p["id"],
+        "title": p["title"],
+        "description": p.get("description", ""),
+        "difficulty": p.get("difficulty", "medium"),
+        "category": p.get("category", ""),
+        "language": "systemverilog",
+        "template": p.get("template", ""),
+        "hint": p.get("hint", ""),
+        "examples": p.get("examples", []),
+        "constraints": p.get("constraints", []),
+        "test_cases": p.get("test_cases", []),
+    } for p in sv]
+    return {"problems": simplified, "total": len(simplified)}
+
 @app.get("/api/waveform/{waveform_id}/data")
 async def get_waveform_data(waveform_id: str):
     """Return parsed VCD waveform data as JSON for frontend viewer"""
@@ -360,13 +499,30 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
         source_file.write_text(source)
 
         # Compile
+        # NOTE: a missing toolchain must degrade to a clean JSON error, not an
+        # unhandled FileNotFoundError bubbling up as HTTP 500.
         output_exec = tmp_path / "sim"
-        compile_result = subprocess.run(
-            ["iverilog", "-g2012", "-o", str(output_exec), str(source_file)],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+        try:
+            compile_result = subprocess.run(
+                ["iverilog", "-g2012", "-o", str(output_exec), str(source_file)],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+        except FileNotFoundError:
+            return {
+                "success": False,
+                "passed": False,
+                "error": "Icarus Verilog not installed",
+                "details": "iverilog/vvp are unavailable on this server."
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "success": False,
+                "passed": False,
+                "error": "Compile Timeout",
+                "details": "Compilation exceeded 30 seconds."
+            }
 
         if compile_result.returncode != 0:
             return {
@@ -385,6 +541,13 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
                 timeout=20,
                 preexec_fn=_set_resource_limits if sys.platform != "win32" else None
             )
+        except FileNotFoundError:
+            return {
+                "success": False,
+                "passed": False,
+                "error": "Icarus Verilog not installed",
+                "details": "The vvp runtime is unavailable on this server."
+            }
         except subprocess.TimeoutExpired:
             return {
                 "success": False,
@@ -404,37 +567,16 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
 
         output = sim_result.stdout + sim_result.stderr
 
-        # Pass/fail detection
-        passed = False
-        message = ""
-
-        if "PASS" in output.upper():
-            passed = True
-            message = "All tests passed!"
-        elif "FAIL" in output.upper():
-            passed = False
-            message = "Tests failed"
-        elif "ERROR" in output.upper():
-            passed = False
-            message = "Runtime error"
-        elif "SIMULATION FINISHED" in output.upper():
-            if "assertion" in output.lower() and "failed" in output.lower():
-                passed = False
-                message = "Assertions failed"
-            elif "$finish" in output:
-                error_lines = [line for line in output.split('\n') if 'error' in line.lower()]
-                if error_lines:
-                    passed = False
-                    message = f"Errors found: {error_lines[0][:100]}"
-                else:
-                    passed = True
-                    message = "Simulation completed successfully"
-            else:
-                passed = True
-                message = "Simulation completed"
-        else:
-            passed = True
-            message = "Code executed successfully (manual verification recommended)"
+        # Pass/fail detection.
+        # FAIL is evaluated before PASS: a testbench often prints "PASS: test 1"
+        # and "FAIL: test 2", and any FAIL must mean the submission failed.
+        # (The previous `"PASS" in output.upper()` check passed such cases.)
+        passed, message = _detect_pass(output, sim_result.returncode)
+        if not passed:
+            err_lines = [ln for ln in output.splitlines()
+                         if "error" in ln.lower() or "fail" in ln.lower()]
+            if err_lines:
+                message = err_lines[0].strip()[:160] or message
 
         result = {
             "success": True,
@@ -465,6 +607,7 @@ class VCDParser:
         self.waveform_data = {}
         self.timescale = "1ns"
         self.max_time = 0
+        self.id_to_name = {}   # var_id -> full hierarchical name (built during parse)
         
     def parse(self):
         """Parse the VCD file"""
@@ -538,6 +681,7 @@ class VCDParser:
                     break
             
             # Initialize waveform data
+            self.id_to_name = signal_map
             for signal in self.signals:
                 self.waveform_data[signal['name']] = []
             
@@ -592,21 +736,23 @@ class VCDParser:
             return False
     
     def _record_state(self, time, signal_values):
-        """Record signal states at a specific time"""
+        """Record signal states at a specific time.
+
+        Uses the prebuilt id -> name map (self.id_to_name) instead of scanning
+        the whole signal list per signal, which made this O(signals^2) per step.
+        """
         for sig_id, value in signal_values.items():
-            signal_name = None
-            for sig in self.signals:
-                if sig['id'] == sig_id:
-                    signal_name = sig['name']
-                    break
-            
-            if signal_name:
-                waveform = self.waveform_data[signal_name]
-                if not waveform or waveform[-1]['time'] != time:
-                    waveform.append({
-                        'time': time,
-                        'value': value
-                    })
+            signal_name = self.id_to_name.get(sig_id)
+            if signal_name is None:
+                continue
+            waveform = self.waveform_data.get(signal_name)
+            if waveform is None:
+                continue
+            if not waveform or waveform[-1]['time'] != time:
+                waveform.append({
+                    'time': time,
+                    'value': value
+                })
     
     def get_waveform_summary(self, signal_name=None):
         """Get summary of waveform data"""
@@ -646,43 +792,18 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
             except Exception as e:
                 logger.error(f"Error parsing VCD: {e}")
     
-    # If no signals found, create sample data for demo
-    if not signals_data:
-        signals_data = [
-            {'id': '1', 'name': 'clk', 'short_name': 'clk', 'color': '#FF5252', 'width': '1'},
-            {'id': '2', 'name': 'a', 'short_name': 'a', 'color': '#4CAF50', 'width': '1'},
-            {'id': '3', 'name': 'b', 'short_name': 'b', 'color': '#2196F3', 'width': '1'},
-            {'id': '4', 'name': 'out', 'short_name': 'out', 'color': '#FF9800', 'width': '1'},
-        ]
-        timescale = "1ns"
-        max_time = 100
-    
+    # No synthetic/demo data: if the VCD is missing or empty we render an
+    # explicit "no waveform data" state rather than inventing fake signals.
+    has_data = bool(signals_data)
+
     # Prepare data for JavaScript
     signals_json = json.dumps(signals_data)
     timescale_json = json.dumps(timescale)
     max_time_json = json.dumps(max_time)
-    
-    # Create a simplified waveform data structure for JavaScript
-    sample_waveform = {}
-    for sig in signals_data:
-        if sig['name'] in waveform_summary:
-            sample_waveform[sig['name']] = waveform_summary[sig['name']]
-        else:
-            # Create sample waveform
-            waveform = []
-            for t in range(0, max_time + 10, 10):
-                if sig['name'] == 'clk':
-                    value = '1' if (t // 10) % 2 == 0 else '0'
-                elif sig['name'] == 'a':
-                    value = '1' if t < 30 or (t >= 60 and t < 90) else '0'
-                elif sig['name'] == 'b':
-                    value = '1' if (t >= 20 and t < 50) or t >= 80 else '0'
-                else:
-                    value = '1' if t >= 40 and t < 70 else '0'
-                waveform.append({'time': t, 'value': value})
-            sample_waveform[sig['name']] = waveform
-    
-    waveform_json = json.dumps(sample_waveform)
+
+    # Only real recorded waveform data is sent to the viewer.
+    waveform_json = json.dumps(waveform_summary)
+    has_data_json = json.dumps(has_data)
     
     return f'''<!DOCTYPE html>
 <html lang="en">
@@ -772,6 +893,33 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
             color: var(--text-light);
             text-transform: uppercase;
             letter-spacing: 1px;
+        }}
+        
+        /* No-data notice */
+        .no-data-banner {{
+            display: none;
+            background: #fff7ed;
+            border: 1px solid #fdba74;
+            border-left: 6px solid #f97316;
+            border-radius: 12px;
+            padding: 22px 26px;
+            margin-bottom: 20px;
+            color: #7c2d12;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+        }}
+        
+        .no-data-banner h2 {{
+            font-size: 18px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        
+        .no-data-banner p {{
+            font-size: 14px;
+            line-height: 1.6;
+            color: #9a3412;
         }}
         
         /* Main Layout */
@@ -1225,6 +1373,15 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
 </head>
 <body>
     <div class="container">
+        <!-- No-data notice (shown only when the VCD is missing or empty) -->
+        <div class="no-data-banner" id="no-data-banner">
+            <h2><i class="fas fa-exclamation-triangle"></i> No waveform data</h2>
+            <p>
+                No VCD was recorded for this run. Enable the <strong>Waveform</strong>
+                option before running the simulation, and make sure the testbench
+                reaches a <code>$finish</code> so the dump is written.
+            </p>
+        </div>
         <!-- Header -->
         <div class="header">
             <div class="header-info">
@@ -1380,6 +1537,7 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
         const waveformData = {waveform_json};
         const timescale = {timescale_json};
         const maxTime = {max_time_json};
+        const hasData = {has_data_json};
         
         let zoomLevel = 1.0;
         let offsetX = 0;
@@ -1390,6 +1548,13 @@ def create_professional_viewer(waveform_id: str, vcd_exists: bool) -> str:
         
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {{
+            if (!hasData || signalsData.length === 0) {{
+                const banner = document.getElementById('no-data-banner');
+                if (banner) banner.style.display = 'block';
+                const grid = document.querySelector('.main-layout');
+                if (grid) grid.style.opacity = '0.35';
+                return;
+            }}
             renderSignalList();
             renderWaveform();
             setupEventListeners();
@@ -1910,6 +2075,16 @@ async def audit_problems():
     if not PROBLEMS:
         return {"results": [], "summary": {"total": 0, "pass": 0, "fail": 0}}
 
+    # Without a toolchain every problem would be reported as a failure, which is
+    # misleading. Short-circuit with an explicit explanation instead.
+    if not (shutil.which("iverilog") and shutil.which("vvp")):
+        return {
+            "results": [],
+            "summary": {"total": len(PROBLEMS), "pass": 0, "fail": 0,
+                        "skipped": len(PROBLEMS)},
+            "error": "Icarus Verilog is not installed on this server — the audit cannot run.",
+        }
+
     results = []
     passed_count = 0
 
@@ -2098,6 +2273,10 @@ def _detect_pass(output: str, returncode: int):
     # %Warning-SOMEERROR or other diagnostic codes that contain "ERROR" in their name.
     if re.search(r'%Error', output) or re.search(r'\bRUNTIME ERROR\b', up):
         return False, "Runtime error"
+    # Icarus / vvp runtime diagnostics, e.g. "design.v:12: ERROR: ..." or
+    # "$fatal" — these must not be reported as a successful run.
+    if re.search(r'(?m)^\s*(?:\S+:\d+:\s*)?ERROR\s*:', output) or "$fatal" in output.lower():
+        return False, "Runtime error"
     if re.search(r'\bPASS(ED)?\b', up):
         return True, "All tests passed!"
     if "SIMULATION FINISHED" in up or "RUNTIME FINISHED" in up:
@@ -2258,6 +2437,41 @@ def _run_iverilog(tmp: Path, sources: list, top: str, generation: str,
         if cov:
             result["coverage"] = cov
     return _collect_waveform(tmp, waveform_id, result)
+
+
+_VERILATOR_ROOT_PROBED = False
+
+
+def _ensure_verilator_root() -> None:
+    """Locate Verilator's data directory for portable/relocatable installs.
+
+    Distro packages compile the data path into the binary, so nothing is needed.
+    Portable bundles (e.g. OSS CAD Suite) ship it under ``<root>/share/verilator``
+    and abort with "Cannot find verilated_std_waiver.vlt" unless VERILATOR_ROOT
+    points there. Probed once, then cached.
+    """
+    global _VERILATOR_ROOT_PROBED
+    if _VERILATOR_ROOT_PROBED or os.environ.get("VERILATOR_ROOT"):
+        _VERILATOR_ROOT_PROBED = True
+        return
+    _VERILATOR_ROOT_PROBED = True
+
+    exe = shutil.which("verilator")
+    if not exe:
+        return
+    marker = Path("include") / "verilated_std_waiver.vlt"
+    base = Path(exe).resolve().parent
+    for cand in (base.parent / "share" / "verilator",   # <root>/bin/verilator
+                 base / "share" / "verilator",          # <root>/verilator
+                 base.parent,                           # <root>
+                 base):
+        try:
+            if (cand / marker).exists():
+                os.environ["VERILATOR_ROOT"] = str(cand)
+                logger.info(f"VERILATOR_ROOT auto-detected: {cand}")
+                return
+        except OSError:
+            continue
 
 
 def _run_verilator(tmp: Path, sources: list, top: str, defines: list,
@@ -2550,26 +2764,38 @@ def _materialize_sources(tmp: Path, body_files, testbench: str = "",
     return written
 
 
+# The path group must tolerate colons: sources are compiled by absolute path, and
+# a Windows path ("C:\...\dirty.v:9:15:") breaks a naive [^:]* match, which left
+# file="" and line=0 and disabled click-to-jump in the UI.
 _DIAG_RE = re.compile(
     r'^%(Warning|Error)(?:-([A-Z0-9_]+))?:\s*'
-    r'(?:([^:\s][^:]*?):(\d+):(\d+):\s*)?(.*)$'
+    r'(?:(.+?):(\d+):(\d+):\s*)?(.*)$'
+)
+
+# "%Error: Exiting due to N error(s)" is a roll-up, not a real diagnostic.
+_DIAG_SUMMARY_RE = re.compile(
+    r'^%(?:Warning|Error)(?:-[A-Z0-9_]+)?:\s*Exiting due to\b'
 )
 
 
 def _parse_verilator_diags(text: str) -> list:
-    """Turn Verilator lint output into structured diagnostics."""
+    """Turn Verilator lint output into structured diagnostics.
+
+    Diagnostics without a file:line prefix (e.g. "Cannot find file containing
+    module: 'x'", bad flags) are kept too — they are real errors, and dropping
+    them made a hard failure look like a clean pass.
+    """
     diags = []
     for line in (text or "").splitlines():
-        m = _DIAG_RE.match(line.rstrip())
-        if not m:
+        line = line.rstrip()
+        m = _DIAG_RE.match(line)
+        if not m or _DIAG_SUMMARY_RE.match(line):
             continue
         f = m.group(3) or ""
-        if not f:
-            continue  # summary lines like "%Error: Exiting due to ..."
         diags.append({
             "severity": "error" if m.group(1) == "Error" else "warning",
             "code": m.group(2) or "",
-            "file": os.path.basename(f),
+            "file": os.path.basename(f) if f else "",
             "line": int(m.group(4) or 0),
             "col": int(m.group(5) or 0),
             "message": (m.group(6) or "").strip(),
@@ -2589,23 +2815,63 @@ class LintRequest(BaseModel):
 
 
 def _parse_yosys_stats(text: str) -> dict:
-    """Extract 'Number of cells' + per-cell counts from a Yosys log."""
+    """Extract cell counts and basic metrics from a Yosys ``stat`` block.
+
+    Yosys has changed this output shape over time and both are in the wild:
+      old:  "Number of cells:  24"   then "  $_AND_   8"
+      new:  "24 cells"               then "  8   $_AND_"
+    Yosys 0.69 uses the new shape, so the old regex alone silently returned
+    nothing and the Synthesis panel showed no cell breakdown.
+    """
+    _METRICS = ("wire bits", "public wire bits", "wires", "public wires",
+                "memories", "processes", "ports", "port bits")
+
     cells = {}
+    metrics = {}
     total = None
-    in_cells = False
-    for line in (text or "").splitlines():
-        m = re.match(r'\s*Number of cells:\s*(\d+)', line)
+    mode = None  # None | "old_cells" | "new_cells"
+
+    for raw_line in (text or "").splitlines():
+        line = raw_line.rstrip()
+
+        m = re.match(r'\s*Number of cells:\s*(\d+)\s*$', line)
         if m:
-            total = int(m.group(1))
-            in_cells = True
+            total, mode = int(m.group(1)), "old_cells"
             continue
-        if in_cells:
-            mc = re.match(r'\s+(\S+)\s+(\d+)\s*$', line)
-            if mc:
-                cells[mc.group(1)] = int(mc.group(2))
-            elif line.strip():
-                in_cells = False
-    return {"cell_count": total, "cells": cells}
+
+        m = re.match(r'\s*(\d+)\s+cells\s*$', line)
+        if m:
+            total, mode = int(m.group(1)), "new_cells"
+            continue
+
+        m = re.match(r'\s*Number of ([a-z ]+?):\s*(\d+)\s*$', line)
+        if m and m.group(1) in _METRICS:
+            metrics[m.group(1)] = int(m.group(2))
+            mode = None
+            continue
+
+        m = re.match(r'\s*(\d+)\s+([a-z ]+?)\s*$', line)
+        if m and m.group(2) in _METRICS:
+            metrics[m.group(2)] = int(m.group(1))
+            mode = None
+            continue
+
+        if mode == "old_cells":
+            m = re.match(r'\s+(\S+)\s+(\d+)\s*$', line)
+            if m:
+                cells[m.group(1)] = int(m.group(2))
+                continue
+            if line.strip():
+                mode = None
+        elif mode == "new_cells":
+            m = re.match(r'\s+(\d+)\s+(\S+)\s*$', line)
+            if m:
+                cells[m.group(2)] = int(m.group(1))
+                continue
+            if line.strip():
+                mode = None
+
+    return {"cell_count": total, "cells": cells, "metrics": metrics}
 
 
 class SynthRequest(BaseModel):
@@ -2629,6 +2895,7 @@ async def lint_code(request: Request, body: LintRequest):
             return {"success": False, "error": "Verilator not installed",
                     "details": "The Verilator lint engine is unavailable on this server.",
                     "diagnostics": [], "warning_count": 0, "error_count": 0}
+        _ensure_verilator_root()
 
         extra = _sanitize_flags(body.extra_flags)
         defines = [d.strip() for d in body.defines if d and _DEFINE_RE.match(d.strip())]
@@ -2649,8 +2916,12 @@ async def lint_code(request: Request, body: LintRequest):
             if not top or not _NAME_RE.match(top):
                 top = detect_top_module(src_map)
 
+            # NOTE: -I must be attached to its directory ("-I<dir>"). Passing
+            # "-I <dir>" as two argv entries makes Verilator treat the directory
+            # as a *module name* and abort with "Cannot find file containing
+            # module: '.'", which silently produced an empty diagnostic list.
             cmd = ["verilator", "--lint-only", "-Wall", "-Wno-fatal",
-                   "-I", str(tmp), "-I", "."]
+                   "-I" + str(tmp), "-I."]
             if is_sv:
                 cmd.append("-sv")
             if top:
@@ -2674,6 +2945,18 @@ async def lint_code(request: Request, body: LintRequest):
             diags = _parse_verilator_diags(raw)
             errs = sum(1 for d in diags if d["severity"] == "error")
             warns = sum(1 for d in diags if d["severity"] == "warning")
+
+            # A nonzero exit with nothing parseable (missing include dir, bad
+            # flag, internal error) must not be reported as a clean pass.
+            if res.returncode != 0 and errs == 0:
+                tail = [l.strip() for l in raw.splitlines() if l.strip()]
+                diags.append({
+                    "severity": "error", "code": "", "file": "", "line": 0, "col": 0,
+                    "message": (tail[-1] if tail
+                                else f"Verilator exited with status {res.returncode}")[:300],
+                })
+                errs += 1
+
             return {
                 "success": True,
                 "passed": errs == 0,

@@ -21,9 +21,11 @@ import logging
 import re
 import asyncio
 import time
-from threading import Thread
+from threading import Thread, Lock
 from datetime import datetime
 from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -41,7 +43,8 @@ MAX_CONCURRENT_SIMS = 3
 sim_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SIMS)
 
 # Create waveform directory (falls back to the OS temp dir on Windows/dev)
-WAVEFORM_DIR = Path(os.environ.get("WAVEFORM_DIR", "/tmp/waveforms"))
+_waveform_default = "/data/waveforms" if Path("/data").exists() else str(Path(tempfile.gettempdir()) / "chipversity_waveforms")
+WAVEFORM_DIR = Path(os.environ.get("WAVEFORM_DIR", _waveform_default))
 try:
     WAVEFORM_DIR.mkdir(exist_ok=True, parents=True)
 except Exception:
@@ -52,7 +55,7 @@ except Exception:
 logger.info(f"Waveform directory: {WAVEFORM_DIR}")
 
 # Shareable-project store (falls back to OS temp dir on Windows/dev)
-SHARE_DIR = WAVEFORM_DIR.parent / "chipversity_shares"
+SHARE_DIR = Path(os.environ.get("SHARE_DIR", str(WAVEFORM_DIR.parent / "chipversity_shares")))
 try:
     SHARE_DIR.mkdir(exist_ok=True, parents=True)
 except Exception:
@@ -105,10 +108,27 @@ def clean_json(text):
     """Remove control characters that break JSON parsing"""
     return ''.join(char for char in text if ord(char) >= 32 or char in '\n\r\t')
 
+
+def practice_text(value):
+    """Keep the public practice catalog free of content-format labels."""
+    text = re.sub(r'\b(interview|story)\b\s*:?\s*', '', str(value or ''), flags=re.IGNORECASE)
+    return re.sub(r'\s{2,}', ' ', text).strip()
+
+
+def public_problem(problem):
+    """Remove hiring-oriented wording from a problem returned to the frontend."""
+    result = dict(problem)
+    for key in ('title', 'description', 'hint'):
+        if key in result:
+            result[key] = practice_text(result[key])
+    if result.get('category') in ('interview_puzzle', 'story'):
+        result['category'] = 'rtl_challenges'
+    return result
+
 # Load problems
 PROBLEMS = []
 try:
-    with open("problems.json", "r", encoding="utf-8") as f:
+    with open(BASE_DIR / "problems.json", "r", encoding="utf-8") as f:
         content = f.read()
         cleaned_content = clean_json(content)  # Clean it!
         PROBLEMS = json.loads(cleaned_content)
@@ -125,7 +145,8 @@ async def root():
 async def get_problems():
     """Return list of available problems"""
     simplified = []
-    for problem in PROBLEMS:
+    for raw_problem in PROBLEMS:
+        problem = public_problem(raw_problem)
         simplified.append({
             "id": problem["id"],
             "title": problem["title"],
@@ -200,11 +221,10 @@ CATEGORY_META = {
         "Advanced Circuits", 14, "fas fa-rocket", "#6366f1",
         "ALUs, arbiters, pipelines and other larger designs that combine the earlier "
         "building blocks."),
-    "interview_puzzle": (
-        "Interview Puzzles", 15, "fas fa-brain", "#d946ef",
-        "The questions that actually get asked in hardware interviews — CDC "
-        "synchronisers, arbiters, divide-by-N with 50% duty, Hamming codes and the "
-        "classic \"how would you do this in RTL?\" brain-teasers."),
+    "rtl_challenges": (
+        "RTL Challenges", 15, "fas fa-brain", "#d946ef",
+        "Focused RTL exercises covering CDC synchronisers, arbiters, clock dividers, "
+        "Hamming codes and practical hardware design techniques."),
     "real_world": (
         "Real-World Interfaces", 16, "fas fa-industry", "#0d9488",
         "Protocols and interfaces as they appear in production silicon — UART, SPI, "
@@ -221,7 +241,7 @@ def _category_list():
     """Build the canonical category list from the loaded problems."""
     seen = {}
     for p in PROBLEMS:
-        cid = (p.get("category") or "").strip()
+        cid = public_problem(p).get("category", "").strip()
         if not cid:
             continue
         seen[cid] = seen.get(cid, 0) + 1
@@ -348,7 +368,8 @@ async def run_code(request: Request, body: CodeRequest):
             )
         
         try:
-            result = run_simulation(
+            result = await asyncio.to_thread(
+                run_simulation,
                 body.code,
                 problem["testbench"],
                 body.generate_waveform,
@@ -405,12 +426,13 @@ async def submit_solution(request: Request, body: SubmitRequest):
             )
         
         try:
-            result = run_simulation(
+            result = await asyncio.to_thread(
+                run_simulation,
                 body.code,
                 problem["testbench"],
-                generate_waveform=False,
-                problem_title=problem["title"],
-                is_submission=True
+                False,
+                problem["title"],
+                True
             )
         finally:
             sim_semaphore.release()
@@ -446,6 +468,27 @@ def _set_resource_limits():
         resource.setrlimit(resource.RLIMIT_AS,  (256 * 1024 * 1024, 256 * 1024 * 1024))  # 256MB RAM
     except Exception:
         pass  # Windows or unsupported platform — skip silently
+
+
+def _limited(argv: list) -> list:
+    """Wrap argv so the child imposes its own CPU + memory limits.
+
+    ``subprocess``'s ``preexec_fn`` is documented as unsafe once other threads
+    exist: the child can deadlock on a lock that another thread held at fork
+    time. The advanced-run path now executes on a worker thread, so the limits
+    move into the child instead. ``ulimit`` is applied after the fork and rlimits
+    survive the ``exec``, so the ceiling is identical (10 s CPU, 256 MB address
+    space) without the fork-time hazard.
+
+    Non-Linux hosts have no ``sh`` and no rlimits; the argv is returned unchanged,
+    which is exactly what the old ``sys.platform != "win32"`` guard did.
+    """
+    if sys.platform == "win32":
+        return [str(a) for a in argv]
+    return ["bash", "-c",
+            'ulimit -t 10 2>/dev/null; ulimit -v 262144 2>/dev/null; '
+            'exec "$0" "$@"',
+            *[str(a) for a in argv]]
 
 
 def run_simulation(user_code: str, testbench: str, generate_waveform: bool, problem_title: str, is_submission: bool = False) -> dict:
@@ -2039,11 +2082,12 @@ async def run_custom(request: Request, body: CustomRunRequest):
             raise HTTPException(status_code=503, detail="Server busy. Try again in a moment.")
 
         try:
-            result = run_simulation(
+            result = await asyncio.to_thread(
+                run_simulation,
                 body.user_code,
                 body.testbench,
                 body.generate_waveform,
-                problem_title="custom"
+                "custom"
             )
         finally:
             sim_semaphore.release()
@@ -2405,9 +2449,8 @@ def _run_iverilog(tmp: Path, sources: list, top: str, generation: str,
     vvp_cmd += [str(out)] + ["+" + p for p in plusargs]
     try:
         sim = subprocess.run(
-            vvp_cmd, capture_output=True, text=True, timeout=20,
-            cwd=str(tmp),
-            preexec_fn=_set_resource_limits if sys.platform != "win32" else None
+            _limited(vvp_cmd), capture_output=True, text=True, timeout=20,
+            cwd=str(tmp)
         )
     except subprocess.TimeoutExpired:
         return {"success": False, "passed": False, "error": "Simulation Timeout",
@@ -2440,6 +2483,20 @@ def _run_iverilog(tmp: Path, sources: list, top: str, generation: str,
 
 
 _VERILATOR_ROOT_PROBED = False
+
+#: Budget for the Verilator C++ build, in seconds.
+#:
+#: This must stay comfortably below the gunicorn worker timeout in the Dockerfile
+#: (240s). If the build outlives the worker, gunicorn kills it and the client gets
+#: an empty 502 instead of the structured error below -- which is exactly how the
+#: Verilator engine appeared "broken" in production while Icarus worked.
+VERILATOR_BUILD_TIMEOUT = 90
+
+#: How long a Verilator run will wait for another build to finish, in seconds.
+VERILATOR_BUILD_QUEUE_TIMEOUT = 60
+
+#: Serialises Verilator's C++ build. See the comment in _run_verilator().
+_VERILATOR_BUILD_LOCK = Lock()
 
 
 def _ensure_verilator_root() -> None:
@@ -2487,8 +2544,19 @@ def _run_verilator(tmp: Path, sources: list, top: str, defines: list,
                            "Use the Icarus Verilog engine instead."}
 
     mdir = tmp / "obj_dir"
+    # The C++ build is the entire cost of this engine, and it is what made every
+    # Verilator run outlive gunicorn's worker timeout and die as a bare 502.
+    #
+    # -CFLAGS -O0 is the big lever. The generated model is built once and then run
+    # for a few simulated microseconds, so optimising it buys nothing and accounts
+    # for most of the build time (and most of the peak memory). One job per stage
+    # avoids oversubscribing the single shared vCPU and roughly halves peak RSS,
+    # which matters on a 512 MB instance where an OOM-killed worker looks exactly
+    # like a timeout from the outside.
     cmd = ["verilator", "--binary", "--timing", "--assert", "-Wno-fatal",
-           "-j", "2", "--top-module", top, "--Mdir", str(mdir)]
+           "--verilate-jobs", "1", "--build-jobs", "1",
+           "-CFLAGS", "-O0",
+           "--top-module", top, "--Mdir", str(mdir)]
     if coverage:
         cmd.append("--coverage")
     if waveform_id:
@@ -2499,29 +2567,54 @@ def _run_verilator(tmp: Path, sources: list, top: str, defines: list,
     cmd += extra_flags
     cmd += [str(p) for p in sources]
 
+    # One C++ build at a time. MAX_CONCURRENT_SIMS permits three concurrent runs,
+    # but this plan has a single shared vCPU and 512 MB of RAM, so three verilator
+    # builds would thrash the CPU and OOM the worker -- and an OOM-killed worker
+    # looks exactly like a timeout from the client.
+    if not _VERILATOR_BUILD_LOCK.acquire(timeout=VERILATOR_BUILD_QUEUE_TIMEOUT):
+        return {"success": False, "passed": False, "error": "Verilator busy",
+                "details": "Another Verilator build is already running. Verilator "
+                           "compiles a native model before it can simulate, and this "
+                           "server runs one build at a time. Try again shortly, or "
+                           "switch to the Icarus Verilog engine."}
     try:
-        comp = subprocess.run(cmd, capture_output=True, text=True,
-                              timeout=120, cwd=str(tmp))
-    except subprocess.TimeoutExpired:
-        return {"success": False, "passed": False, "error": "Verilation Timeout",
-                "details": "Verilator exceeded 120 seconds."}
+        try:
+            comp = subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=VERILATOR_BUILD_TIMEOUT, cwd=str(tmp))
+        except subprocess.TimeoutExpired:
+            return {"success": False, "passed": False, "error": "Verilator build timed out",
+                    "details": "Building the Verilator C++ model exceeded {}s. Verilator "
+                               "compiles a native binary before it can run, which is far "
+                               "slower than Icarus — use the Icarus Verilog engine for "
+                               "large designs, or split the design up."
+                               .format(VERILATOR_BUILD_TIMEOUT)}
+    finally:
+        _VERILATOR_BUILD_LOCK.release()
 
     combined = (comp.stdout or "") + (comp.stderr or "")
     if comp.returncode != 0:
         return {"success": False, "passed": False, "error": "Verilation Failed",
                 "details": combined[:4000]}
 
-    exes = sorted(mdir.glob(f"V{top}")) or sorted(mdir.glob("V*"))
+    # Only the linked executable counts. `--binary` also drops V{top}.mk, .h, .cpp,
+    # .o and __ALL.a into --Mdir, and the old `glob("V*")` fallback sorted those in
+    # alongside it -- so on any platform where the binary carries an extension
+    # (V{top}.exe on Windows) the first glob missed and the fallback handed
+    # subprocess a .cpp file to execute.
+    exes = sorted(p for p in mdir.glob("V{}*".format(top))
+                  if p.suffix in ("", ".exe"))
+    if not exes:
+        exes = sorted(p for p in mdir.glob("V*") if p.suffix in ("", ".exe"))
     if not exes:
         return {"success": False, "passed": False, "error": "Verilator build error",
-                "details": "No executable was produced.\n" + combined[:1500]}
+                "details": "The C++ model compiled but produced no runnable "
+                           "executable. Verilator needs a C++ toolchain (g++ and "
+                           "make) on the server.\n" + combined[:1500]}
 
     try:
         sim = subprocess.run(
-            [str(exes[0])] + ["+" + p for p in plusargs],
-            capture_output=True, text=True, timeout=30,
-            cwd=str(tmp),
-            preexec_fn=_set_resource_limits if sys.platform != "win32" else None
+            _limited([str(exes[0])] + ["+" + p for p in plusargs]),
+            capture_output=True, text=True, timeout=30, cwd=str(tmp)
         )
     except subprocess.TimeoutExpired:
         return {"success": False, "passed": False, "error": "Simulation Timeout",
@@ -2613,9 +2706,15 @@ async def run_advanced(request: Request, body: AdvancedRunRequest):
             raise HTTPException(status_code=503,
                                 detail="Server busy. Please try again in a moment.")
 
+        # Run the blocking subprocess work on a worker thread. It used to execute
+        # inline on the event loop, so a single Verilator build froze the whole API
+        # -- including the "/" health check Render polls. A health-check timeout
+        # restarts the service and kills the build in flight, which made the engine
+        # look broken for a second, independent reason.
         try:
-            result = _run_advanced_inner(body, defines, extra_flags,
-                                         params, plusargs, vvp_flags)
+            result = await asyncio.to_thread(
+                _run_advanced_inner, body, defines, extra_flags,
+                params, plusargs, vvp_flags)
         finally:
             sim_semaphore.release()
 

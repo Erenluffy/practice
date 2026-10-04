@@ -665,6 +665,7 @@ class VCDParser:
             in_var_scope = False
             current_scope = ""
             
+            timescale_pending = False
             for line in lines:
                 line = line.strip()
                 if not line:
@@ -676,10 +677,14 @@ class VCDParser:
                     # Strip the $timescale keyword and the trailing $end, join remaining tokens
                     ts_line = line.replace('$timescale', '').replace('$end', '').strip()
                     if ts_line:
-                        self.timescale = ts_line
-                    elif line == '$timescale':
-                        # timescale value is on the next lines — store marker and handle below
-                        self.timescale = '1ns'  # safe default; multi-line VCDs are rare in iverilog
+                        self.timescale = self._normalize_timescale(ts_line)
+                    else:
+                        timescale_pending = True
+                elif timescale_pending:
+                    ts_line = line.replace('$end', '').strip()
+                    if ts_line:
+                        self.timescale = self._normalize_timescale(ts_line)
+                        timescale_pending = False
                 
                 # Parse scope
                 elif line.startswith('$scope'):
@@ -777,6 +782,14 @@ class VCDParser:
         except Exception as e:
             logger.error(f"VCD parsing error: {e}")
             return False
+
+    @staticmethod
+    def _normalize_timescale(value):
+        """Return a compact VCD unit such as 1ps or 10ns."""
+        parts = value.replace('/', ' ').split()
+        if len(parts) >= 2 and parts[0].isdigit():
+            return parts[0] + parts[1]
+        return value.replace(' ', '') or '1ns'
     
     def _record_state(self, time, signal_values):
         """Record signal states at a specific time.

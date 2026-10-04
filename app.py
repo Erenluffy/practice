@@ -54,6 +54,11 @@ except Exception:
 
 logger.info(f"Waveform directory: {WAVEFORM_DIR}")
 
+# Keep the most recent VCD in the worker as a fallback. This prevents a
+# waveform from disappearing between the run response and the iframe request
+# when the service is running without its persistent disk mounted.
+_waveform_cache = {}
+
 # Shareable-project store (falls back to OS temp dir on Windows/dev)
 SHARE_DIR = Path(os.environ.get("SHARE_DIR", str(WAVEFORM_DIR.parent / "chipversity_shares")))
 try:
@@ -304,10 +309,22 @@ async def get_waveform_data(waveform_id: str):
     """Return parsed VCD waveform data as JSON for frontend viewer"""
     try:
         vcd_path = WAVEFORM_DIR / f"{waveform_id}.vcd"
-        if not vcd_path.exists():
-            raise HTTPException(status_code=404, detail="Waveform not found")
-        parser = VCDParser(vcd_path)
-        if not parser.parse():
+        cached_vcd = _waveform_cache.get(waveform_id)
+        if not vcd_path.exists() and not cached_vcd:
+            raise HTTPException(status_code=404, detail="Waveform not found or expired; run the simulation again")
+        if cached_vcd and not vcd_path.exists():
+            with tempfile.NamedTemporaryFile(suffix=".vcd", delete=False) as tmp:
+                tmp.write(cached_vcd)
+                cached_path = Path(tmp.name)
+            try:
+                parser = VCDParser(cached_path)
+                parsed = parser.parse()
+            finally:
+                cached_path.unlink(missing_ok=True)
+        else:
+            parser = VCDParser(vcd_path)
+            parsed = parser.parse()
+        if not parsed:
             raise HTTPException(status_code=500, detail="VCD parse failed")
         colors = ['#FF5252','#4CAF50','#2196F3','#FF9800','#9C27B0',
                   '#00BCD4','#8BC34A','#FF5722','#607D8B','#795548']
@@ -634,6 +651,7 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
             if vcd_file.exists() and vcd_file.stat().st_size > 0:
                 dest_vcd = WAVEFORM_DIR / f"{waveform_id}.vcd"
                 shutil.copy2(vcd_file, dest_vcd)
+                _waveform_cache[waveform_id] = vcd_file.read_bytes()
                 logger.info(f"Waveform saved: {waveform_id} ({vcd_file.stat().st_size} bytes)")
                 result["waveform_id"] = waveform_id
             else:
@@ -2381,6 +2399,7 @@ def _collect_waveform(tmp: Path, waveform_id: str, result: dict) -> dict:
     if vcd_file.exists() and vcd_file.stat().st_size > 0:
         dest = WAVEFORM_DIR / f"{waveform_id}.vcd"
         shutil.copy2(vcd_file, dest)
+        _waveform_cache[waveform_id] = vcd_file.read_bytes()
         result["waveform_id"] = waveform_id
         logger.info(f"Waveform saved: {waveform_id} ({vcd_file.stat().st_size} bytes)")
     else:
@@ -3188,3 +3207,4 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port, workers=1)
+    

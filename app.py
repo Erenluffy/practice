@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from worker_auth import DispatcherAuthMiddleware
 import subprocess
 import tempfile
 import os
@@ -30,6 +31,28 @@ BASE_DIR = Path(__file__).resolve().parent
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _truthy(value):
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Dispatcher-only access.  Render gives every service a public URL, so an
+# unauthenticated worker would let a caller bypass the dispatcher's shared
+# rate limits and queue.  /api/health stays public for Render's health check.
+DISPATCHER_AUTH_TOKEN = os.environ.get("DISPATCHER_AUTH_TOKEN", "").strip()
+ALLOW_UNAUTHENTICATED_WORKER = _truthy(
+    os.environ.get("ALLOW_UNAUTHENTICATED_WORKER"))
+if not DISPATCHER_AUTH_TOKEN and not ALLOW_UNAUTHENTICATED_WORKER:
+    raise RuntimeError(
+        "DISPATCHER_AUTH_TOKEN is required; set it to the same secret as the "
+        "dispatcher's WORKER_AUTH_TOKEN. For local development only, set "
+        "ALLOW_UNAUTHENTICATED_WORKER=true.")
+if not DISPATCHER_AUTH_TOKEN:
+    logger.warning(
+        "Worker authentication is DISABLED (ALLOW_UNAUTHENTICATED_WORKER). "
+        "Never use this on a public deployment.")
+
 
 # Rate limiter (per IP)
 limiter = Limiter(key_func=get_remote_address)
@@ -69,7 +92,9 @@ except Exception:
 
 logger.info(f"Share directory: {SHARE_DIR}")
 
-# CORS
+# Auth is added before CORS, which Starlette applies as the outermost layer,
+# so a rejected request still receives CORS headers.
+app.add_middleware(DispatcherAuthMiddleware, token=DISPATCHER_AUTH_TOKEN)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -141,6 +166,33 @@ try:
 except Exception as e:
     logger.error(f"Error loading problems: {e}")
     PROBLEMS = []
+
+# SystemVerilog problems are maintained separately.  They need a different
+# compile/run path (Verilator + z3) and expose a richer schema (features,
+# requirements, constraints/assertions source, visible testbench).
+SV_PROBLEMS = []
+try:
+    with open(BASE_DIR / "svproblems.json", "r", encoding="utf-8") as f:
+        content = f.read()
+        cleaned_content = clean_json(content)
+        SV_PROBLEMS = json.loads(cleaned_content)
+    logger.info(f"Loaded {len(SV_PROBLEMS)} SystemVerilog problems")
+except Exception as e:
+    logger.error(f"Error loading SystemVerilog problems: {e}")
+    SV_PROBLEMS = []
+
+
+def find_problem(problem_id: str):
+    """Look up a problem in either the Verilog or SystemVerilog catalog."""
+    for collection in (PROBLEMS, SV_PROBLEMS):
+        for problem in collection:
+            if problem.get("id") == problem_id:
+                return problem
+    return None
+
+
+def is_systemverilog(problem: dict) -> bool:
+    return str(problem.get("language", "")).lower() == "systemverilog"
 
 @app.get("/")
 async def root():
@@ -282,26 +334,19 @@ async def get_categories():
 
 @app.get("/api/svproblems")
 async def get_sv_problems():
-    """SystemVerilog problem set.
+    """Return the SystemVerilog problem set.
 
-    This deployment ships Verilog problems only; SystemVerilog problems live in
-    the separate SV backend. Return an empty, well-formed list so the SV pages
-    fall back gracefully instead of receiving a 404.
+    The SV schema is richer than the Verilog one: the simulator renders
+    ``features``, ``requirements``, the constraint/assertion source, and the
+    testbench.  The solution stays server-side; the testbench is intentionally
+    public because the UI has a "Show Testbench" panel.
     """
-    sv = [p for p in PROBLEMS if str(p.get("language", "")).lower() == "systemverilog"]
-    simplified = [{
-        "id": p["id"],
-        "title": p["title"],
-        "description": p.get("description", ""),
-        "difficulty": p.get("difficulty", "medium"),
-        "category": p.get("category", ""),
-        "language": "systemverilog",
-        "template": p.get("template", ""),
-        "hint": p.get("hint", ""),
-        "examples": p.get("examples", []),
-        "constraints": p.get("constraints", []),
-        "test_cases": p.get("test_cases", []),
-    } for p in sv]
+    simplified = []
+    for raw_problem in SV_PROBLEMS:
+        problem = public_problem(raw_problem)
+        problem.pop("solution", None)
+        problem["language"] = "systemverilog"
+        simplified.append(problem)
     return {"problems": simplified, "total": len(simplified)}
 
 @app.get("/api/waveform/{waveform_id}/data")
@@ -371,7 +416,7 @@ async def run_code(request: Request, body: CodeRequest):
     """Execute Verilog code - Simulation only"""
     try:
         # Find problem
-        problem = next((p for p in PROBLEMS if p["id"] == body.problem_id), None)
+        problem = find_problem(body.problem_id)
         if not problem:
             raise HTTPException(status_code=404, detail="Problem not found")
         
@@ -385,8 +430,9 @@ async def run_code(request: Request, body: CodeRequest):
             )
         
         try:
+            runner = run_systemverilog if is_systemverilog(problem) else run_simulation
             result = await asyncio.to_thread(
-                run_simulation,
+                runner,
                 body.code,
                 problem["testbench"],
                 body.generate_waveform,
@@ -429,7 +475,7 @@ async def submit_solution(request: Request, body: SubmitRequest):
     """Submit solution and check if it's correct"""
     try:
         # Find problem
-        problem = next((p for p in PROBLEMS if p["id"] == body.problem_id), None)
+        problem = find_problem(body.problem_id)
         if not problem:
             raise HTTPException(status_code=404, detail="Problem not found")
         
@@ -443,14 +489,24 @@ async def submit_solution(request: Request, body: SubmitRequest):
             )
         
         try:
-            result = await asyncio.to_thread(
-                run_simulation,
-                body.code,
-                problem["testbench"],
-                False,
-                problem["title"],
-                True
-            )
+            if is_systemverilog(problem):
+                result = await asyncio.to_thread(
+                    run_systemverilog,
+                    body.code,
+                    problem["testbench"],
+                    False,
+                    problem["title"],
+                    True
+                )
+            else:
+                result = await asyncio.to_thread(
+                    run_simulation,
+                    body.code,
+                    problem["testbench"],
+                    False,
+                    problem["title"],
+                    True
+                )
         finally:
             sim_semaphore.release()
         
@@ -657,6 +713,50 @@ def run_simulation(user_code: str, testbench: str, generate_waveform: bool, prob
             else:
                 logger.warning(f"VCD file missing or empty for {problem_title}")
 
+        return result
+
+
+def run_systemverilog(user_code: str, testbench: str, generate_waveform: bool,
+                      problem_title: str = "", is_submission: bool = False) -> dict:
+    """Compile and run a SystemVerilog problem with Verilator.
+
+    Verilator is the only engine that understands classes, constraints,
+    fork/join and virtual methods.  The hidden testbench is supplied by the
+    catalog, so the client never has to concatenate it with the submission.
+    """
+    if not (testbench or "").strip():
+        return {
+            "success": False,
+            "passed": False,
+            "error": "Testbench missing",
+            "details": "This SystemVerilog problem has no testbench configured.",
+        }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        design = tmp / "design.sv"
+        design.write_text(user_code or "", encoding="utf-8")
+
+        tb_text = testbench
+        waveform_id = None
+        if generate_waveform:
+            waveform_id = str(uuid.uuid4())
+            vcd_path = str(tmp / "waveform.vcd").replace("\\", "/")
+            tb_text = _inject_vcd(tb_text, vcd_path)
+
+        tb_file = tmp / "tb_chipversity.sv"
+        tb_file.write_text(tb_text, encoding="utf-8")
+
+        top = detect_top_module({
+            "design.sv": user_code or "",
+            "tb_chipversity.sv": tb_text,
+        })
+        if not top:
+            top = "tb"
+
+        result = _run_verilator(
+            tmp, [design, tb_file], top, [], [], False, waveform_id)
+        result.setdefault("engine", "verilator")
         return result
 
 class VCDParser:
@@ -2519,7 +2619,7 @@ _VERILATOR_ROOT_PROBED = False
 #: Budget for the Verilator C++ build, in seconds.
 #:
 #: This must stay comfortably below the gunicorn worker timeout in the Dockerfile
-#: (240s). If the build outlives the worker, gunicorn kills it and the client gets
+#: (330s). If the build outlives the worker, gunicorn kills it and the client gets
 #: an empty 502 instead of the structured error below -- which is exactly how the
 #: Verilator engine appeared "broken" in production while Icarus worked.
 VERILATOR_BUILD_TIMEOUT = 90

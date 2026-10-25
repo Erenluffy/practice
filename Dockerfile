@@ -1,23 +1,74 @@
-# Ubuntu 24.04 ships Verilator 5.x which supports --binary / --timing
+# ---------------------------------------------------------------------------
+# Build the latest Verilator from source.  Ubuntu's packaged Verilator is
+# several releases behind and lacks fixes needed by the SystemVerilog problem
+# set (constraints, classes, fork/join, virtual methods).
+# ---------------------------------------------------------------------------
+FROM ubuntu:24.04 AS verilator-build
+
+ENV DEBIAN_FRONTEND=noninteractive
+ARG VERILATOR_VERSION=5.052
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    autoconf \
+    bison \
+    ca-certificates \
+    curl \
+    flex \
+    g++ \
+    help2man \
+    libfl-dev \
+    liblz4-dev \
+    make \
+    perl \
+    python3 \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL \
+        "https://github.com/verilator/verilator/archive/refs/tags/v${VERILATOR_VERSION}.tar.gz" \
+        -o /tmp/verilator.tar.gz \
+    && tar -xzf /tmp/verilator.tar.gz -C /tmp \
+    && cd "/tmp/verilator-${VERILATOR_VERSION}" \
+    && autoconf \
+    && ./configure --prefix=/opt/verilator \
+    && make -j2 \
+    && make install \
+    && rm -rf /tmp/verilator*
+
+# ---------------------------------------------------------------------------
+# Runtime image
+# ---------------------------------------------------------------------------
 FROM ubuntu:24.04
 
-# Set non-interactive frontend and timezone to avoid prompts
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# Install Python, Icarus Verilog, Verilator (+ C++ toolchain it needs), GTKWave
-RUN apt-get update && apt-get install -y \
+# perl is required by the Verilator driver, z3 by its constraint solver, and
+# build-essential by `verilator --binary` (it compiles the generated C++).
+RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
+    ca-certificates \
     python3 \
     python3-pip \
     python3-venv \
     iverilog \
-    verilator \
     yosys \
     build-essential \
     gtkwave \
     xvfb \
+    perl \
+    z3 \
+    zlib1g \
+    liblz4-1 \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=verilator-build /opt/verilator /opt/verilator
+
+ENV PATH="/opt/verilator/bin:${PATH}"
+ENV VERILATOR_ROOT=/opt/verilator/share/verilator
+# Verilator spawns the solver over a pipe; `--in` keeps z3 reading SMT-LIB
+# from stdin instead of treating it as a file name.
+ENV VERILATOR_SOLVER="z3 --in"
 
 # Create app directory
 WORKDIR /app
@@ -52,8 +103,10 @@ RUN pip3 install --no-cache-dir --break-system-packages gunicorn
 # run died at ~30s while /api/lint (no C++ build) kept working, which made it look
 # as though Verilator itself was broken.
 #
-# The app's own budgets are 90s (Verilator build) + 120s (simulation) = 210s worst
-# case, so 240s lets the app return a structured error instead of being killed
-# mid-build. --graceful-timeout gives an in-flight worker time to finish.
-CMD ["gunicorn", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "app:app", \
-     "--bind", "0.0.0.0:8000", "--timeout", "240", "--graceful-timeout", "30"]
+# The app's own budgets are 60s (Verilator build queue) + 90s (build) + 120s
+# (simulation) = 270s worst case, so 330s lets the app return a structured error
+# instead of being killed mid-build. The dispatcher waits up to 360s for
+# /api/run-advanced, leaving room for a Render cold start. --graceful-timeout
+# gives an in-flight worker time to finish. Bind to Render's $PORT when it is
+# injected (10000 by default), falling back to 8000 for local docker runs.
+CMD ["sh", "-c", "exec gunicorn -w 1 -k uvicorn.workers.UvicornWorker app:app --bind 0.0.0.0:${PORT:-8000} --timeout 330 --graceful-timeout 30"]

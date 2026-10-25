@@ -1,0 +1,807 @@
+[
+  {
+    "id": "sv_constraint_sum_9",
+    "title": "Randomization & Constraint - Sum equals to 9",
+    "description": "Randomize two integers so that their sum is exactly 9 and both values stay positive.",
+    "difficulty": "easy",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "classes",
+      "constraints",
+      "randomization"
+    ],
+    "requirements": "Implement the constraint block in class Sum9 so randomize() always produces a > 0, b > 0 and a + b == 9.",
+    "template": "class Sum9;\n  rand int a;\n  rand int b;\n\n  // TODO: add a constraint that keeps a and b positive and makes a + b == 9.\n  constraint c_sum {\n  }\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  Sum9 s;\n\n  initial begin\n    s = new;\n    repeat (50) begin\n      if (s.randomize() != 1) begin\n        errors++;\n        $display(\"FAIL: randomize() returned 0\");\n      end else if (s.a + s.b != 9) begin\n        errors++;\n        $display(\"FAIL: a=%0d b=%0d sum=%0d\", s.a, s.b, s.a + s.b);\n      end else if (s.a <= 0 || s.b <= 0) begin\n        errors++;\n        $display(\"FAIL: non-positive a=%0d b=%0d\", s.a, s.b);\n      end\n    end\n    if (errors == 0) $display(\"PASS: all 50 randomizations satisfied a + b == 9\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class Sum9;\n  rand int a;\n  rand int b;\n\n  constraint c_sum {\n    a > 0;\n    b > 0;\n    a + b == 9;\n  }\nendclass",
+    "hint": "Use a single constraint block with three expressions: a > 0, b > 0, and a + b == 9.",
+    "examples": [
+      {
+        "input": "randomize()",
+        "output": "a + b == 9",
+        "explanation": "Every randomization must satisfy the sum."
+      },
+      {
+        "input": "a = 4",
+        "output": "b = 5",
+        "explanation": "One valid pair."
+      }
+    ],
+    "constraints": "constraint c_sum {\n  a > 0;\n  b > 0;\n  a + b == 9;\n}",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "50 randomizations",
+        "expected": "a + b == 9 and a > 0 and b > 0",
+        "description": "constraint"
+      }
+    ]
+  },
+  {
+    "id": "sv_shallow_copy",
+    "title": "Shallow Copy",
+    "description": "Create a shallow copy of a Packet object. The copy must share the Payload handle with the original object.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "classes",
+      "copy"
+    ],
+    "requirements": "Implement Packet::copy(). Return a new Packet whose addr is copied and whose payload handle points at the same Payload object.",
+    "template": "class Payload;\n  int values[];\n\n  function new(int size = 0);\n    if (size > 0) begin\n      values = new[size];\n      foreach (values[i]) values[i] = i;\n    end\n  endfunction\nendclass\n\nclass Packet;\n  int addr;\n  Payload payload;\n\n  function new(int addr = 0, int size = 0);\n    this.addr = addr;\n    payload = new(size);\n  endfunction\n\n  // TODO: return a shallow copy (copy addr, share the payload handle).\n  function Packet copy();\n    Packet p = new();\n    return p;\n  endfunction\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  Packet orig;\n  Packet sh;\n\n  initial begin\n    orig = new(10, 3);\n    sh = orig.copy();\n\n    if (sh.addr != 10) begin\n      errors++;\n      $display(\"FAIL: copied addr=%0d\", sh.addr);\n    end\n    if (sh.payload.values.size() != 3) begin\n      errors++;\n      $display(\"FAIL: copied payload size=%0d\", sh.payload.values.size());\n    end else begin\n      sh.addr = 99;\n      if (orig.addr != 10) begin\n        errors++;\n        $display(\"FAIL: scalar addr was not copied\");\n      end\n      sh.payload.values[0] = 42;\n      if (orig.payload.values[0] != 42) begin\n        errors++;\n        $display(\"FAIL: shallow copy did not share the payload handle\");\n      end\n    end\n\n    if (errors == 0) $display(\"PASS: shallow copy shares the payload but copies scalar fields\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class Payload;\n  int values[];\n\n  function new(int size = 0);\n    if (size > 0) begin\n      values = new[size];\n      foreach (values[i]) values[i] = i;\n    end\n  endfunction\nendclass\n\nclass Packet;\n  int addr;\n  Payload payload;\n\n  function new(int addr = 0, int size = 0);\n    this.addr = addr;\n    payload = new(size);\n  endfunction\n\n  function Packet copy();\n    Packet p = new();\n    p.addr = addr;\n    p.payload = payload;\n    return p;\n  endfunction\nendclass",
+    "hint": "A shallow copy copies the class handle. Assign p.payload = payload instead of allocating a new Payload.",
+    "examples": [
+      {
+        "input": "Packet with addr=10 and payload {0,1,2}",
+        "output": "copy shares payload",
+        "explanation": "Writing through the copy is visible in the original."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "orig.addr=10, payload={0,1,2}",
+        "expected": "copy.addr==10 and copy.payload == orig.payload",
+        "description": "shallow copy"
+      }
+    ]
+  },
+  {
+    "id": "sv_deep_copy",
+    "title": "Deep Copy",
+    "description": "Create a deep copy of a Packet object. The copy must own an independent Payload object.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "classes",
+      "copy"
+    ],
+    "requirements": "Implement Packet::deep_copy(). Copy addr and allocate a new Payload with the same values so the original is not modified through the copy.",
+    "template": "class Payload;\n  int values[];\n\n  function new(int size = 0);\n    if (size > 0) begin\n      values = new[size];\n      foreach (values[i]) values[i] = i;\n    end\n  endfunction\nendclass\n\nclass Packet;\n  int addr;\n  Payload payload;\n\n  function new(int addr = 0, int size = 0);\n    this.addr = addr;\n    payload = new(size);\n  endfunction\n\n  // TODO: return a deep copy (copy addr and duplicate the payload values).\n  function Packet deep_copy();\n    Packet p = new();\n    return p;\n  endfunction\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  Packet orig;\n  Packet dp;\n\n  initial begin\n    orig = new(10, 3);\n    dp = orig.deep_copy();\n\n    if (dp.addr != 10) begin\n      errors++;\n      $display(\"FAIL: copied addr=%0d\", dp.addr);\n    end\n    if (dp.payload.values.size() != 3) begin\n      errors++;\n      $display(\"FAIL: copied payload size=%0d\", dp.payload.values.size());\n    end else begin\n      dp.addr = 99;\n      if (orig.addr != 10) begin\n        errors++;\n        $display(\"FAIL: scalar addr was not copied\");\n      end\n      dp.payload.values[1] = 77;\n      if (orig.payload.values[1] != 1) begin\n        errors++;\n        $display(\"FAIL: deep copy modified the original payload\");\n      end\n    end\n\n    if (errors == 0) $display(\"PASS: deep copy owns an independent payload\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class Payload;\n  int values[];\n\n  function new(int size = 0);\n    if (size > 0) begin\n      values = new[size];\n      foreach (values[i]) values[i] = i;\n    end\n  endfunction\nendclass\n\nclass Packet;\n  int addr;\n  Payload payload;\n\n  function new(int addr = 0, int size = 0);\n    this.addr = addr;\n    payload = new(size);\n  endfunction\n\n  function Packet deep_copy();\n    Packet p = new();\n    p.addr = addr;\n    p.payload = new(payload.values.size());\n    foreach (payload.values[i]) p.payload.values[i] = payload.values[i];\n    return p;\n  endfunction\nendclass",
+    "hint": "Allocate a new Payload and copy each value. Do not assign p.payload = payload.",
+    "examples": [
+      {
+        "input": "Packet with payload {0,1,2}",
+        "output": "independent payload",
+        "explanation": "Writing through the deep copy leaves the original unchanged."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "orig.payload={0,1,2}",
+        "expected": "deep_copy.payload != orig.payload",
+        "description": "deep copy"
+      }
+    ]
+  },
+  {
+    "id": "sv_copy_methods",
+    "title": "Copy Methods",
+    "description": "Implement both shallow and deep copy methods on the same class and observe how they differ.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "classes",
+      "copy"
+    ],
+    "requirements": "Implement Record::copy() as a shallow copy and Record::deep_copy() as a deep copy. Record holds a Payload handle.",
+    "template": "class Payload;\n  int values[];\n\n  function new(int size = 0);\n    if (size > 0) begin\n      values = new[size];\n      foreach (values[i]) values[i] = i * 10;\n    end\n  endfunction\nendclass\n\nclass Record;\n  int id;\n  Payload payload;\n\n  function new(int id = 0, int size = 0);\n    this.id = id;\n    payload = new(size);\n  endfunction\n\n  // TODO: shallow copy (share payload).\n  function Record copy();\n    Record r = new();\n    return r;\n  endfunction\n\n  // TODO: deep copy (duplicate payload values).\n  function Record deep_copy();\n    Record r = new();\n    return r;\n  endfunction\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  Record orig;\n  Record sh;\n  Record dp;\n\n  initial begin\n    orig = new(7, 4);\n    sh = orig.copy();\n    if (sh.id != 7) begin\n      errors++;\n      $display(\"FAIL: shallow id=%0d\", sh.id);\n    end\n    if (sh.payload.values.size() != 4) begin\n      errors++;\n      $display(\"FAIL: shallow payload size=%0d\", sh.payload.values.size());\n    end else begin\n      sh.payload.values[0] = 111;\n      if (orig.payload.values[0] != 111) begin\n        errors++;\n        $display(\"FAIL: copy() did not share the payload handle\");\n      end\n    end\n\n    orig = new(7, 4);\n    dp = orig.deep_copy();\n    if (dp.id != 7) begin\n      errors++;\n      $display(\"FAIL: deep id=%0d\", dp.id);\n    end\n    if (dp.payload.values.size() != 4) begin\n      errors++;\n      $display(\"FAIL: deep payload size=%0d\", dp.payload.values.size());\n    end else begin\n      dp.payload.values[1] = 222;\n      if (orig.payload.values[1] != 10) begin\n        errors++;\n        $display(\"FAIL: deep_copy() modified the original payload\");\n      end\n    end\n\n    if (errors == 0) $display(\"PASS: copy() is shallow and deep_copy() is independent\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class Payload;\n  int values[];\n\n  function new(int size = 0);\n    if (size > 0) begin\n      values = new[size];\n      foreach (values[i]) values[i] = i * 10;\n    end\n  endfunction\nendclass\n\nclass Record;\n  int id;\n  Payload payload;\n\n  function new(int id = 0, int size = 0);\n    this.id = id;\n    payload = new(size);\n  endfunction\n\n  function Record copy();\n    Record r = new();\n    r.id = id;\n    r.payload = payload;\n    return r;\n  endfunction\n\n  function Record deep_copy();\n    Record r = new();\n    r.id = id;\n    r.payload = new(payload.values.size());\n    foreach (payload.values[i]) r.payload.values[i] = payload.values[i];\n    return r;\n  endfunction\nendclass",
+    "hint": "copy() assigns the payload handle; deep_copy() allocates a new Payload and copies each value.",
+    "examples": [
+      {
+        "input": "Record with payload {0,10,20,30}",
+        "output": "copy shares; deep_copy does not",
+        "explanation": "Compare the two methods."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "Record(7,4)",
+        "expected": "copy shares payload, deep_copy is independent",
+        "description": "both copy methods"
+      }
+    ]
+  },
+  {
+    "id": "sv_array_ascending",
+    "title": "Array in Ascending Order",
+    "description": "Sort a dynamic array of integers in ascending order in place.",
+    "difficulty": "easy",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "arrays",
+      "functions"
+    ],
+    "requirements": "Implement sort_ascending(ref int arr[]) so the array is sorted from smallest to largest in place.",
+    "template": "function automatic void sort_ascending(ref int arr[]);\n  // TODO: sort arr in ascending order in place.\nendfunction",
+    "testbench": "module tb;\n  int errors = 0;\n  int a[];\n\n  initial begin\n    a = '{5, 1, 4, 2, 3};\n    sort_ascending(a);\n    if (a.size() != 5 || a[0] != 1 || a[1] != 2 || a[2] != 3 || a[3] != 4 || a[4] != 5) begin\n      errors++;\n      $display(\"FAIL: expected 1 2 3 4 5\");\n    end\n\n    a = '{9};\n    sort_ascending(a);\n    if (a.size() != 1 || a[0] != 9) begin\n      errors++;\n      $display(\"FAIL: single-element array\");\n    end\n\n    a = new[0];\n    sort_ascending(a);\n    if (a.size() != 0) begin\n      errors++;\n      $display(\"FAIL: empty array\");\n    end\n\n    a = '{-3, 0, -1, 2, 2};\n    sort_ascending(a);\n    if (a[0] != -3 || a[1] != -1 || a[2] != 0 || a[3] != 2 || a[4] != 2) begin\n      errors++;\n      $display(\"FAIL: negatives or duplicates\");\n    end\n\n    if (errors == 0) $display(\"PASS: array sorted ascending\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "function automatic void sort_ascending(ref int arr[]);\n  int n;\n  n = arr.size();\n  for (int i = 0; i < n - 1; i++) begin\n    for (int j = 0; j < n - 1 - i; j++) begin\n      if (arr[j] > arr[j+1]) begin\n        int t;\n        t = arr[j];\n        arr[j] = arr[j+1];\n        arr[j+1] = t;\n      end\n    end\n  end\nendfunction",
+    "hint": "A simple bubble sort is enough. Compare adjacent elements and swap when the left one is larger.",
+    "examples": [
+      {
+        "input": "{5,1,4,2,3}",
+        "output": "{1,2,3,4,5}",
+        "explanation": "Ascending order."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "{5,1,4,2,3}",
+        "expected": "{1,2,3,4,5}",
+        "description": "sort"
+      }
+    ]
+  },
+  {
+    "id": "sv_sliding_window_sum",
+    "title": "Sliding Window Sum",
+    "description": "Compute the sum of every contiguous window of size k in an integer array.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "arrays",
+      "functions"
+    ],
+    "requirements": "Implement sliding_window_sum(int arr[], int k, ref int out[]). Fill out with arr.size()-k+1 window sums. Return an empty out when k <= 0 or k > arr.size().",
+    "template": "function automatic void sliding_window_sum(int arr[], int k, ref int out[]);\n  // TODO: fill out with the sum of each window of size k.\nendfunction",
+    "testbench": "module tb;\n  int errors = 0;\n  int a[];\n  int r[];\n\n  initial begin\n    a = '{1, 2, 3, 4, 5};\n    sliding_window_sum(a, 3, r);\n    if (r.size() != 3 || r[0] != 6 || r[1] != 9 || r[2] != 12) begin\n      errors++;\n      $display(\"FAIL: k=3 expected 6 9 12\");\n    end\n\n    sliding_window_sum(a, 1, r);\n    if (r.size() != 5 || r[0] != 1 || r[4] != 5) begin\n      errors++;\n      $display(\"FAIL: k=1 expected the original array\");\n    end\n\n    sliding_window_sum(a, 5, r);\n    if (r.size() != 1 || r[0] != 15) begin\n      errors++;\n      $display(\"FAIL: k=5 expected one sum of 15\");\n    end\n\n    sliding_window_sum(a, 6, r);\n    if (r.size() != 0) begin\n      errors++;\n      $display(\"FAIL: k > size should return an empty array\");\n    end\n\n    sliding_window_sum(a, 0, r);\n    if (r.size() != 0) begin\n      errors++;\n      $display(\"FAIL: k=0 should return an empty array\");\n    end\n\n    if (errors == 0) $display(\"PASS: sliding window sums\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "function automatic void sliding_window_sum(int arr[], int k, ref int out[]);\n  out = new[0];\n  if (k <= 0 || k > arr.size()) return;\n  out = new[arr.size() - k + 1];\n  for (int i = 0; i < out.size(); i++) begin\n    int s;\n    s = 0;\n    for (int j = 0; j < k; j++) s += arr[i+j];\n    out[i] = s;\n  end\nendfunction",
+    "hint": "Use a nested loop: the outer loop walks the starting index and the inner loop adds k elements.",
+    "examples": [
+      {
+        "input": "{1,2,3,4,5}, k=3",
+        "output": "{6,9,12}",
+        "explanation": "1+2+3, 2+3+4, 3+4+5."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "{1,2,3,4,5}, k=3",
+        "expected": "{6,9,12}",
+        "description": "window sum"
+      }
+    ]
+  },
+  {
+    "id": "sv_rearrange_array",
+    "title": "Rearrange an Array",
+    "description": "Move every zero in an integer array to the end while preserving the order of the non-zero values.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "arrays",
+      "functions"
+    ],
+    "requirements": "Implement move_zeros_to_end(ref int arr[]). Non-zero values keep their relative order; all zeros move to the end.",
+    "template": "function automatic void move_zeros_to_end(ref int arr[]);\n  // TODO: move all zeros to the end, preserving non-zero order.\nendfunction",
+    "testbench": "module tb;\n  int errors = 0;\n  int a[];\n\n  initial begin\n    a = '{0, 1, 0, 3, 12};\n    move_zeros_to_end(a);\n    if (a.size() != 5 || a[0] != 1 || a[1] != 3 || a[2] != 12 || a[3] != 0 || a[4] != 0) begin\n      errors++;\n      $display(\"FAIL: expected 1 3 12 0 0\");\n    end\n\n    a = '{0, 0, 0};\n    move_zeros_to_end(a);\n    if (a[0] != 0 || a[1] != 0 || a[2] != 0) begin\n      errors++;\n      $display(\"FAIL: all-zero array\");\n    end\n\n    a = '{1, 2, 3};\n    move_zeros_to_end(a);\n    if (a[0] != 1 || a[1] != 2 || a[2] != 3) begin\n      errors++;\n      $display(\"FAIL: array without zeros changed\");\n    end\n\n    a = new[0];\n    move_zeros_to_end(a);\n    if (a.size() != 0) begin\n      errors++;\n      $display(\"FAIL: empty array\");\n    end\n\n    if (errors == 0) $display(\"PASS: zeros moved to the end\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "function automatic void move_zeros_to_end(ref int arr[]);\n  int w;\n  w = 0;\n  foreach (arr[i]) begin\n    if (arr[i] != 0) begin\n      arr[w] = arr[i];\n      w++;\n    end\n  end\n  for (int i = w; i < arr.size(); i++) arr[i] = 0;\nendfunction",
+    "hint": "Keep a write index. Copy each non-zero value forward, then fill the remaining positions with zero.",
+    "examples": [
+      {
+        "input": "{0,1,0,3,12}",
+        "output": "{1,3,12,0,0}",
+        "explanation": "Non-zero order is preserved."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "{0,1,0,3,12}",
+        "expected": "{1,3,12,0,0}",
+        "description": "rearrange"
+      }
+    ]
+  },
+  {
+    "id": "sv_constraint_no_77",
+    "title": "No Consecutive 7's",
+    "description": "Randomize an array of 10 nibbles so that no two adjacent elements are both 7.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "classes",
+      "constraints",
+      "randomization"
+    ],
+    "requirements": "Add a constraint to class No77 that forbids arr[i] == 7 and arr[i-1] == 7 for every i > 0.",
+    "template": "class No77;\n  rand bit [3:0] arr[10];\n\n  // TODO: forbid two adjacent elements from both being 7.\n  constraint c_no77 {\n  }\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  No77 n;\n\n  initial begin\n    n = new;\n    repeat (50) begin\n      if (n.randomize() != 1) begin\n        errors++;\n        $display(\"FAIL: randomize() returned 0\");\n      end else begin\n        for (int i = 1; i < 10; i++) begin\n          if (n.arr[i] == 4'd7 && n.arr[i-1] == 4'd7) begin\n            errors++;\n            $display(\"FAIL: adjacent 7s at index %0d\", i);\n          end\n        end\n      end\n    end\n    if (errors == 0) $display(\"PASS: no consecutive 7s in 50 randomizations\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class No77;\n  rand bit [3:0] arr[10];\n\n  constraint c_no77 {\n    foreach (arr[i]) {\n      if (i > 0) {\n        !(arr[i] == 4'd7 && arr[i-1] == 4'd7);\n      }\n    }\n  }\nendclass",
+    "hint": "Use foreach and guard the comparison with if (i > 0). The forbidden pair is arr[i] == 7 && arr[i-1] == 7.",
+    "examples": [
+      {
+        "input": "randomize()",
+        "output": "no adjacent 7s",
+        "explanation": "The constraint applies to every adjacent pair."
+      }
+    ],
+    "constraints": "constraint c_no77 {\n  foreach (arr[i]) {\n    if (i > 0) !(arr[i] == 4'd7 && arr[i-1] == 4'd7);\n  }\n}",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "50 randomizations of arr[10]",
+        "expected": "no adjacent elements equal 7",
+        "description": "constraint"
+      }
+    ]
+  },
+  {
+    "id": "sv_constraint_checksum",
+    "title": "Checksum-Consistent Transaction",
+    "description": "Randomize an 8-byte payload and a checksum that equals the XOR of all payload bytes.",
+    "difficulty": "hard",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "classes",
+      "constraints",
+      "randomization"
+    ],
+    "requirements": "Add a constraint to class Txn so checksum always equals payload[0] ^ payload[1] ^ ... ^ payload[7].",
+    "template": "class Txn;\n  rand bit [7:0] payload[8];\n  rand bit [7:0] checksum;\n\n  // TODO: make checksum the XOR of all eight payload bytes.\n  constraint c_checksum {\n  }\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  Txn t;\n\n  initial begin\n    t = new;\n    repeat (30) begin\n      if (t.randomize() != 1) begin\n        errors++;\n        $display(\"FAIL: randomize() returned 0\");\n      end else begin\n        bit [7:0] x;\n        x = 0;\n        foreach (t.payload[i]) x ^= t.payload[i];\n        if (x != t.checksum) begin\n          errors++;\n          $display(\"FAIL: checksum=%h expected=%h\", t.checksum, x);\n        end\n      end\n    end\n    if (errors == 0) $display(\"PASS: checksum matches the payload XOR\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class Txn;\n  rand bit [7:0] payload[8];\n  rand bit [7:0] checksum;\n\n  constraint c_checksum {\n    checksum == (payload[0] ^ payload[1] ^ payload[2] ^ payload[3] ^\n                 payload[4] ^ payload[5] ^ payload[6] ^ payload[7]);\n  }\nendclass",
+    "hint": "Wrap the XOR expression in parentheses: checksum == (payload[0] ^ ... ^ payload[7]).",
+    "examples": [
+      {
+        "input": "payload = {1,2,3,4,5,6,7,8}",
+        "output": "checksum = 8'h0F",
+        "explanation": "XOR of all bytes."
+      }
+    ],
+    "constraints": "constraint c_checksum {\n  checksum == (payload[0] ^ payload[1] ^ payload[2] ^ payload[3] ^\n               payload[4] ^ payload[5] ^ payload[6] ^ payload[7]);\n}",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "30 randomizations",
+        "expected": "checksum == XOR(payload)",
+        "description": "constraint"
+      }
+    ]
+  },
+  {
+    "id": "sv_constraint_array_pattern",
+    "title": "Randomization & Constraint - Array Pattern",
+    "description": "Randomize an array so that it follows the pattern 0, 2, 4, ..., 14.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "classes",
+      "constraints",
+      "randomization"
+    ],
+    "requirements": "Add a constraint to class Pattern so arr[0] == 0 and arr[i] == arr[i-1] + 2 for every i > 0.",
+    "template": "class Pattern;\n  rand bit [7:0] arr[8];\n\n  // TODO: arr[0] = 0 and each following element is 2 greater than the previous.\n  constraint c_pattern {\n  }\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  Pattern p;\n\n  initial begin\n    p = new;\n    repeat (20) begin\n      if (p.randomize() != 1) begin\n        errors++;\n        $display(\"FAIL: randomize() returned 0\");\n      end else begin\n        for (int i = 0; i < 8; i++) begin\n          if (p.arr[i] != 2 * i) begin\n            errors++;\n            $display(\"FAIL: arr[%0d]=%0d expected=%0d\", i, p.arr[i], 2 * i);\n          end\n        end\n      end\n    end\n    if (errors == 0) $display(\"PASS: array follows the 0,2,4,...,14 pattern\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class Pattern;\n  rand bit [7:0] arr[8];\n\n  constraint c_pattern {\n    arr[0] == 8'd0;\n    foreach (arr[i]) {\n      if (i > 0) arr[i] == arr[i-1] + 8'd2;\n    }\n  }\nendclass",
+    "hint": "Pin arr[0] to 0 and use foreach with if (i > 0) to relate each element to the previous one.",
+    "examples": [
+      {
+        "input": "randomize()",
+        "output": "{0,2,4,6,8,10,12,14}",
+        "explanation": "A deterministic array pattern built by constraints."
+      }
+    ],
+    "constraints": "constraint c_pattern {\n  arr[0] == 8'd0;\n  foreach (arr[i]) {\n    if (i > 0) arr[i] == arr[i-1] + 8'd2;\n  }\n}",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "20 randomizations",
+        "expected": "arr[i] == 2*i",
+        "description": "constraint"
+      }
+    ]
+  },
+  {
+    "id": "sv_reverse_array",
+    "title": "Reverse an Array",
+    "description": "Reverse a dynamic array of integers in place.",
+    "difficulty": "easy",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "arrays",
+      "functions"
+    ],
+    "requirements": "Implement reverse_array(ref int arr[]) so the first element becomes last and vice versa.",
+    "template": "function automatic void reverse_array(ref int arr[]);\n  // TODO: reverse arr in place.\nendfunction",
+    "testbench": "module tb;\n  int errors = 0;\n  int a[];\n\n  initial begin\n    a = '{1, 2, 3, 4, 5};\n    reverse_array(a);\n    if (a.size() != 5 || a[0] != 5 || a[1] != 4 || a[2] != 3 || a[3] != 2 || a[4] != 1) begin\n      errors++;\n      $display(\"FAIL: expected 5 4 3 2 1\");\n    end\n\n    a = '{1, 2, 3, 4};\n    reverse_array(a);\n    if (a[0] != 4 || a[1] != 3 || a[2] != 2 || a[3] != 1) begin\n      errors++;\n      $display(\"FAIL: even-length array\");\n    end\n\n    a = '{9};\n    reverse_array(a);\n    if (a.size() != 1 || a[0] != 9) begin\n      errors++;\n      $display(\"FAIL: single-element array\");\n    end\n\n    a = new[0];\n    reverse_array(a);\n    if (a.size() != 0) begin\n      errors++;\n      $display(\"FAIL: empty array\");\n    end\n\n    if (errors == 0) $display(\"PASS: array reversed\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "function automatic void reverse_array(ref int arr[]);\n  int n;\n  n = arr.size();\n  for (int i = 0; i < n / 2; i++) begin\n    int t;\n    t = arr[i];\n    arr[i] = arr[n - 1 - i];\n    arr[n - 1 - i] = t;\n  end\nendfunction",
+    "hint": "Swap arr[i] with arr[n-1-i] for i from 0 to n/2 - 1.",
+    "examples": [
+      {
+        "input": "{1,2,3,4,5}",
+        "output": "{5,4,3,2,1}",
+        "explanation": "In-place reversal."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "{1,2,3,4,5}",
+        "expected": "{5,4,3,2,1}",
+        "description": "reverse"
+      }
+    ]
+  },
+  {
+    "id": "sv_find_duplicates",
+    "title": "Find Duplicate Elements in an Array",
+    "description": "Collect each value that appears more than once in an integer array.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "arrays",
+      "functions"
+    ],
+    "requirements": "Implement find_duplicates(int arr[], ref int dups[]). Fill dups with each repeated value exactly once.",
+    "template": "function automatic void find_duplicates(int arr[], ref int dups[]);\n  // TODO: fill dups with values that occur more than once, once per value.\nendfunction",
+    "testbench": "module tb;\n  int errors = 0;\n  int a[];\n  int d[];\n\n  initial begin\n    a = '{1, 2, 3, 2, 1, 4};\n    find_duplicates(a, d);\n    if (d.size() != 2) begin\n      errors++;\n      $display(\"FAIL: expected 2 duplicates, got %0d\", d.size());\n    end else if (!((d[0] == 1 && d[1] == 2) || (d[0] == 2 && d[1] == 1))) begin\n      errors++;\n      $display(\"FAIL: expected duplicates 1 and 2\");\n    end\n\n    a = '{1, 2, 3};\n    find_duplicates(a, d);\n    if (d.size() != 0) begin\n      errors++;\n      $display(\"FAIL: array without duplicates\");\n    end\n\n    a = '{5, 5, 5, 5};\n    find_duplicates(a, d);\n    if (d.size() != 1 || d[0] != 5) begin\n      errors++;\n      $display(\"FAIL: repeated value should appear once\");\n    end\n\n    a = new[0];\n    find_duplicates(a, d);\n    if (d.size() != 0) begin\n      errors++;\n      $display(\"FAIL: empty array\");\n    end\n\n    if (errors == 0) $display(\"PASS: duplicate values found once each\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "function automatic void find_duplicates(int arr[], ref int dups[]);\n  int q[$];\n  dups = new[0];\n  for (int i = 0; i < arr.size(); i++) begin\n    for (int j = i + 1; j < arr.size(); j++) begin\n      if (arr[i] == arr[j]) begin\n        bit seen;\n        seen = 0;\n        foreach (q[k]) if (q[k] == arr[i]) seen = 1;\n        if (!seen) q.push_back(arr[i]);\n        break;\n      end\n    end\n  end\n  dups = new[q.size()];\n  foreach (q[i]) dups[i] = q[i];\nendfunction",
+    "hint": "Use a queue to remember values already added, then copy the queue into dups at the end.",
+    "examples": [
+      {
+        "input": "{1,2,3,2,1,4}",
+        "output": "{1,2}",
+        "explanation": "Each repeated value appears once."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "{1,2,3,2,1,4}",
+        "expected": "{1,2}",
+        "description": "duplicates"
+      }
+    ]
+  },
+  {
+    "id": "sv_first_second_largest",
+    "title": "Find First & Second Largest in an Array",
+    "description": "Return the largest and second-largest distinct values in an integer array.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "arrays",
+      "functions"
+    ],
+    "requirements": "Implement first_second_largest(int arr[], ref int first, ref int second). For an array with one distinct value, set both outputs to that value.",
+    "template": "function automatic void first_second_largest(int arr[], ref int first, ref int second);\n  // TODO: find the largest and second-largest distinct values.\nendfunction",
+    "testbench": "module tb;\n  int errors = 0;\n  int a[];\n  int first;\n  int second;\n\n  initial begin\n    a = '{3, 1, 4, 1, 5, 9, 2, 6};\n    first_second_largest(a, first, second);\n    if (first != 9 || second != 6) begin\n      errors++;\n      $display(\"FAIL: expected 9 and 6, got %0d and %0d\", first, second);\n    end\n\n    a = '{-3, -1, -7, -1};\n    first_second_largest(a, first, second);\n    if (first != -1 || second != -3) begin\n      errors++;\n      $display(\"FAIL: negatives expected -1 and -3, got %0d and %0d\", first, second);\n    end\n\n    a = '{7, 7, 7};\n    first_second_largest(a, first, second);\n    if (first != 7 || second != 7) begin\n      errors++;\n      $display(\"FAIL: one distinct value expected 7 and 7\");\n    end\n\n    a = '{1};\n    first_second_largest(a, first, second);\n    if (first != 1 || second != 1) begin\n      errors++;\n      $display(\"FAIL: single element expected 1 and 1\");\n    end\n\n    if (errors == 0) $display(\"PASS: first and second largest values\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "function automatic void first_second_largest(int arr[], ref int first, ref int second);\n  bit have_second;\n  have_second = 0;\n  if (arr.size() == 0) begin\n    first = 0;\n    second = 0;\n    return;\n  end\n  first = arr[0];\n  second = arr[0];\n  for (int i = 1; i < arr.size(); i++) begin\n    if (arr[i] > first) begin\n      second = first;\n      first = arr[i];\n      have_second = 1;\n    end else if (arr[i] != first && (!have_second || arr[i] > second)) begin\n      second = arr[i];\n      have_second = 1;\n    end\n  end\n  if (!have_second) second = first;\nendfunction",
+    "hint": "Track whether a second distinct value has been seen. Compare against first first, then against second.",
+    "examples": [
+      {
+        "input": "{3,1,4,1,5,9,2,6}",
+        "output": "first=9, second=6",
+        "explanation": "Distinct values only."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "{3,1,4,1,5,9,2,6}",
+        "expected": "9 and 6",
+        "description": "largest two"
+      }
+    ]
+  },
+  {
+    "id": "sv_array_rotate",
+    "title": "Array Manipulations",
+    "description": "Rotate a dynamic array left by k positions.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "arrays",
+      "functions"
+    ],
+    "requirements": "Implement rotate_left(ref int arr[], int k). Positive k rotates left; negative k rotates right. k may be larger than the array size.",
+    "template": "function automatic void rotate_left(ref int arr[], int k);\n  // TODO: rotate arr left by k positions. Handle k >= size and negative k.\nendfunction",
+    "testbench": "module tb;\n  int errors = 0;\n  int a[];\n  int k;\n\n  initial begin\n    a = '{1, 2, 3, 4, 5};\n    k = 2;\n    rotate_left(a, k);\n    if (a.size() != 5 || a[0] != 3 || a[1] != 4 || a[2] != 5 || a[3] != 1 || a[4] != 2) begin\n      errors++;\n      $display(\"FAIL: k=2 expected 3 4 5 1 2\");\n    end\n\n    a = '{1, 2, 3, 4, 5};\n    k = 0;\n    rotate_left(a, k);\n    if (a[0] != 1 || a[4] != 5) begin\n      errors++;\n      $display(\"FAIL: k=0 changed the array\");\n    end\n\n    a = '{1, 2, 3, 4, 5};\n    k = 5;\n    rotate_left(a, k);\n    if (a[0] != 1 || a[4] != 5) begin\n      errors++;\n      $display(\"FAIL: k=size changed the array\");\n    end\n\n    a = '{1, 2, 3, 4, 5};\n    k = 7;\n    rotate_left(a, k);\n    if (a[0] != 3 || a[4] != 2) begin\n      errors++;\n      $display(\"FAIL: k=7 expected 3 4 5 1 2\");\n    end\n\n    a = '{1, 2, 3, 4, 5};\n    k = -1;\n    rotate_left(a, k);\n    if (a[0] != 5 || a[1] != 1 || a[4] != 4) begin\n      errors++;\n      $display(\"FAIL: k=-1 expected 5 1 2 3 4\");\n    end\n\n    a = new[0];\n    k = 3;\n    rotate_left(a, k);\n    if (a.size() != 0) begin\n      errors++;\n      $display(\"FAIL: empty array\");\n    end\n\n    if (errors == 0) $display(\"PASS: array rotated left\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "function automatic void rotate_left(ref int arr[], int k);\n  int n;\n  int tmp[];\n  n = arr.size();\n  if (n == 0) return;\n  k = k % n;\n  if (k < 0) k += n;\n  if (k == 0) return;\n  tmp = new[k];\n  for (int i = 0; i < k; i++) tmp[i] = arr[i];\n  for (int i = k; i < n; i++) arr[i-k] = arr[i];\n  for (int i = 0; i < k; i++) arr[n-k+i] = tmp[i];\nendfunction",
+    "hint": "Normalize k with k % n, then save the first k elements in a temporary array before shifting the rest.",
+    "examples": [
+      {
+        "input": "{1,2,3,4,5}, k=2",
+        "output": "{3,4,5,1,2}",
+        "explanation": "Left rotation."
+      },
+      {
+        "input": "{1,2,3,4,5}, k=-1",
+        "output": "{5,1,2,3,4}",
+        "explanation": "Negative k rotates right."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "{1,2,3,4,5}, k=2",
+        "expected": "{3,4,5,1,2}",
+        "description": "rotate"
+      }
+    ]
+  },
+  {
+    "id": "sv_fork_join_2",
+    "title": "Fork-Join 2",
+    "description": "Use fork...join_any and wait fork so both branches of a task complete before it returns.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "fork-join",
+      "classes"
+    ],
+    "requirements": "Implement ForkJoin2::run(). Start two branches (#10 sets a=1, #20 sets b=2), use join_any, then wait fork.",
+    "template": "class ForkJoin2;\n  int a;\n  int b;\n\n  task run();\n    // TODO: fork two branches (#10 a=1, #20 b=2), use join_any, then wait fork.\n  endtask\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  ForkJoin2 f;\n\n  initial begin\n    f = new;\n    f.run();\n    if (f.a != 1 || f.b != 2) begin\n      errors++;\n      $display(\"FAIL: expected a=1 b=2, got a=%0d b=%0d\", f.a, f.b);\n    end\n    if (errors == 0) $display(\"PASS: join_any + wait fork completed both branches\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class ForkJoin2;\n  int a;\n  int b;\n\n  task run();\n    fork\n      begin #10 a = 1; end\n      begin #20 b = 2; end\n    join_any\n    wait fork;\n  endtask\nendclass",
+    "hint": "join_any returns when the first branch finishes. wait fork then waits for the remaining branch.",
+    "examples": [
+      {
+        "input": "run()",
+        "output": "a=1, b=2",
+        "explanation": "Both branches complete."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "run()",
+        "expected": "a==1 and b==2",
+        "description": "join_any + wait fork"
+      }
+    ]
+  },
+  {
+    "id": "sv_fork_join",
+    "title": "Fork-Join",
+    "description": "Use fork...join so a task waits for both parallel branches before returning.",
+    "difficulty": "easy",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "fork-join",
+      "classes"
+    ],
+    "requirements": "Implement ForkJoin::run(). Start two branches (#5 sets a=10, #10 sets b=20) and use join.",
+    "template": "class ForkJoin;\n  int a;\n  int b;\n\n  task run();\n    // TODO: fork two branches (#5 a=10, #10 b=20) and use join.\n  endtask\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  ForkJoin f;\n\n  initial begin\n    f = new;\n    f.run();\n    if (f.a != 10 || f.b != 20) begin\n      errors++;\n      $display(\"FAIL: expected a=10 b=20, got a=%0d b=%0d\", f.a, f.b);\n    end\n    if (errors == 0) $display(\"PASS: fork...join completed both branches\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class ForkJoin;\n  int a;\n  int b;\n\n  task run();\n    fork\n      begin #5 a = 10; end\n      begin #10 b = 20; end\n    join\n  endtask\nendclass",
+    "hint": "fork...join blocks until every branch finishes, so both a and b are updated.",
+    "examples": [
+      {
+        "input": "run()",
+        "output": "a=10, b=20",
+        "explanation": "Both branches complete."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "run()",
+        "expected": "a==10 and b==20",
+        "description": "fork...join"
+      }
+    ]
+  },
+  {
+    "id": "sv_safe_memory_copy",
+    "title": "Safe Memory Region Copy - Memory Operations",
+    "description": "Copy a byte range between two dynamic arrays with full bounds checking.",
+    "difficulty": "hard",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "classes",
+      "memory",
+      "arrays"
+    ],
+    "requirements": "Implement SafeMem::copy_region(). Return 1 and copy len bytes on success. Return 0 for a negative length or any out-of-bounds source/destination range.",
+    "template": "class SafeMem;\n  function bit copy_region(bit [7:0] src[], int src_start,\n                           int dst_start, int len, ref bit [7:0] dst[]);\n    // TODO: validate all bounds, then copy len bytes from src[src_start] to dst[dst_start].\n    return 0;\n  endfunction\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  SafeMem m;\n  bit [7:0] src[];\n  bit [7:0] dst[];\n\n  initial begin\n    m = new;\n    src = '{8'h10, 8'h20, 8'h30, 8'h40};\n    dst = new[6];\n    foreach (dst[i]) dst[i] = 0;\n\n    if (!m.copy_region(src, 1, 2, 2, dst)) begin\n      errors++;\n      $display(\"FAIL: valid copy rejected\");\n    end\n    if (dst[2] != 8'h20 || dst[3] != 8'h30) begin\n      errors++;\n      $display(\"FAIL: copied bytes are wrong\");\n    end\n    if (dst[0] != 0 || dst[1] != 0 || dst[4] != 0 || dst[5] != 0) begin\n      errors++;\n      $display(\"FAIL: copy touched bytes outside the destination range\");\n    end\n\n    if (m.copy_region(src, 3, 0, 2, dst)) begin\n      errors++;\n      $display(\"FAIL: source range out of bounds was accepted\");\n    end\n    if (m.copy_region(src, 0, 5, 2, dst)) begin\n      errors++;\n      $display(\"FAIL: destination range out of bounds was accepted\");\n    end\n    if (m.copy_region(src, 0, 0, -1, dst)) begin\n      errors++;\n      $display(\"FAIL: negative length was accepted\");\n    end\n    if (m.copy_region(src, -1, 0, 1, dst)) begin\n      errors++;\n      $display(\"FAIL: negative source start was accepted\");\n    end\n\n    if (errors == 0) $display(\"PASS: safe memory region copy\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class SafeMem;\n  function bit copy_region(bit [7:0] src[], int src_start,\n                           int dst_start, int len, ref bit [7:0] dst[]);\n    if (len < 0 || src_start < 0 || dst_start < 0) return 0;\n    if (src_start + len > src.size()) return 0;\n    if (dst_start + len > dst.size()) return 0;\n    for (int i = 0; i < len; i++) dst[dst_start + i] = src[src_start + i];\n    return 1;\n  endfunction\nendclass",
+    "hint": "Check len, src_start, and dst_start first. Then check src_start + len <= src.size() and dst_start + len <= dst.size().",
+    "examples": [
+      {
+        "input": "src={10,20,30,40}, src_start=1, dst_start=2, len=2",
+        "output": "dst[2]=20, dst[3]=30, return 1",
+        "explanation": "Valid copy."
+      },
+      {
+        "input": "src_start=3, len=2",
+        "output": "return 0",
+        "explanation": "Source range would read past the end."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "valid and invalid ranges",
+        "expected": "1 for valid, 0 for invalid",
+        "description": "bounds checking"
+      }
+    ]
+  },
+  {
+    "id": "sv_polymorphism",
+    "title": "Polymorphism",
+    "description": "Use virtual methods so a base-class handle dispatches to Rectangle and Circle implementations.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "classes",
+      "polymorphism"
+    ],
+    "requirements": "Override area() and name() in Rectangle and Circle. Rectangle area is w*h; Circle area is 3*r*r.",
+    "template": "class Shape;\n  virtual function int area();\n    return 0;\n  endfunction\n\n  virtual function string name();\n    return \"Shape\";\n  endfunction\nendclass\n\nclass Rectangle extends Shape;\n  int w;\n  int h;\n\n  function new(int w = 0, int h = 0);\n    this.w = w;\n    this.h = h;\n  endfunction\n\n  // TODO: override area() and name().\nendclass\n\nclass Circle extends Shape;\n  int r;\n\n  function new(int r = 0);\n    this.r = r;\n  endfunction\n\n  // TODO: override area() and name().\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  Rectangle rect;\n  Circle circ;\n  Shape shapes[2];\n\n  initial begin\n    rect = new(3, 4);\n    circ = new(2);\n    shapes[0] = rect;\n    shapes[1] = circ;\n\n    if (shapes[0].area() != 12) begin\n      errors++;\n      $display(\"FAIL: rectangle area=%0d\", shapes[0].area());\n    end\n    if (shapes[1].area() != 12) begin\n      errors++;\n      $display(\"FAIL: circle area=%0d\", shapes[1].area());\n    end\n    if (shapes[0].name() != \"Rectangle\") begin\n      errors++;\n      $display(\"FAIL: rectangle name=%s\", shapes[0].name());\n    end\n    if (shapes[1].name() != \"Circle\") begin\n      errors++;\n      $display(\"FAIL: circle name=%s\", shapes[1].name());\n    end\n\n    if (errors == 0) $display(\"PASS: virtual methods dispatched correctly\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class Shape;\n  virtual function int area();\n    return 0;\n  endfunction\n\n  virtual function string name();\n    return \"Shape\";\n  endfunction\nendclass\n\nclass Rectangle extends Shape;\n  int w;\n  int h;\n\n  function new(int w = 0, int h = 0);\n    this.w = w;\n    this.h = h;\n  endfunction\n\n  virtual function int area();\n    return w * h;\n  endfunction\n\n  virtual function string name();\n    return \"Rectangle\";\n  endfunction\nendclass\n\nclass Circle extends Shape;\n  int r;\n\n  function new(int r = 0);\n    this.r = r;\n  endfunction\n\n  virtual function int area();\n    return 3 * r * r;\n  endfunction\n\n  virtual function string name();\n    return \"Circle\";\n  endfunction\nendclass",
+    "hint": "Declare area() and name() as virtual in the derived classes and return the computed values.",
+    "examples": [
+      {
+        "input": "Rectangle(3,4)",
+        "output": "area=12, name=Rectangle",
+        "explanation": "Base handle dispatches to Rectangle."
+      },
+      {
+        "input": "Circle(2)",
+        "output": "area=12, name=Circle",
+        "explanation": "3*r*r."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "Shape handles to Rectangle(3,4) and Circle(2)",
+        "expected": "areas 12 and 12",
+        "description": "polymorphism"
+      }
+    ]
+  },
+  {
+    "id": "sv_first_nonzero_bit",
+    "title": "Find First Non-Zero Bit Position",
+    "description": "Return the index of the least-significant set bit in a 32-bit value.",
+    "difficulty": "easy",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "functions",
+      "bit-manipulation"
+    ],
+    "requirements": "Implement first_nonzero_bit(bit [31:0] value). Return the bit index (0..31) of the first 1 from the LSB, or -1 when value is zero.",
+    "template": "function automatic int first_nonzero_bit(bit [31:0] value);\n  // TODO: return the index of the first set bit from the LSB, or -1.\n  return -1;\nendfunction",
+    "testbench": "module tb;\n  int errors = 0;\n\n  initial begin\n    if (first_nonzero_bit(32'h0000_0000) != -1) begin\n      errors++;\n      $display(\"FAIL: zero should return -1\");\n    end\n    if (first_nonzero_bit(32'h0000_0001) != 0) begin\n      errors++;\n      $display(\"FAIL: bit 0\");\n    end\n    if (first_nonzero_bit(32'h0000_0100) != 8) begin\n      errors++;\n      $display(\"FAIL: bit 8\");\n    end\n    if (first_nonzero_bit(32'h8000_0000) != 31) begin\n      errors++;\n      $display(\"FAIL: bit 31\");\n    end\n    if (first_nonzero_bit(32'h0000_0010) != 4) begin\n      errors++;\n      $display(\"FAIL: bit 4\");\n    end\n\n    if (errors == 0) $display(\"PASS: first non-zero bit positions\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "function automatic int first_nonzero_bit(bit [31:0] value);\n  for (int i = 0; i < 32; i++) begin\n    if (value[i]) return i;\n  end\n  return -1;\nendfunction",
+    "hint": "Loop from bit 0 upward and return i as soon as value[i] is 1. Return -1 after the loop.",
+    "examples": [
+      {
+        "input": "32'h0000_0100",
+        "output": "8",
+        "explanation": "Bit 8 is the first set bit."
+      },
+      {
+        "input": "32'h0000_0000",
+        "output": "-1",
+        "explanation": "No set bits."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "32'h0000_0100",
+        "expected": "8",
+        "description": "bit scan"
+      }
+    ]
+  },
+  {
+    "id": "sv_fibonacci_function",
+    "title": "Write a Function That Returns a Result",
+    "description": "Write an iterative function that returns the nth Fibonacci number.",
+    "difficulty": "easy",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "functions"
+    ],
+    "requirements": "Implement fibonacci(int n). Return F(0)=0, F(1)=1, and -1 for negative n.",
+    "template": "function automatic int fibonacci(int n);\n  // TODO: return the nth Fibonacci number (F(0)=0, F(1)=1).\n  // Return -1 for negative n.\n  return 0;\nendfunction",
+    "testbench": "module tb;\n  int errors = 0;\n\n  initial begin\n    if (fibonacci(0) != 0) begin errors++; $display(\"FAIL: F(0)\"); end\n    if (fibonacci(1) != 1) begin errors++; $display(\"FAIL: F(1)\"); end\n    if (fibonacci(2) != 1) begin errors++; $display(\"FAIL: F(2)\"); end\n    if (fibonacci(5) != 5) begin errors++; $display(\"FAIL: F(5)\"); end\n    if (fibonacci(10) != 55) begin errors++; $display(\"FAIL: F(10)\"); end\n    if (fibonacci(-3) != -1) begin errors++; $display(\"FAIL: negative n\"); end\n\n    if (errors == 0) $display(\"PASS: Fibonacci function\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "function automatic int fibonacci(int n);\n  int a;\n  int b;\n  int t;\n  if (n < 0) return -1;\n  if (n == 0) return 0;\n  a = 0;\n  b = 1;\n  for (int i = 1; i < n; i++) begin\n    t = a + b;\n    a = b;\n    b = t;\n  end\n  return b;\nendfunction",
+    "hint": "Keep two previous values and iterate from 1 to n. Handle n < 0 and n == 0 first.",
+    "examples": [
+      {
+        "input": "5",
+        "output": "5",
+        "explanation": "0,1,1,2,3,5."
+      },
+      {
+        "input": "-3",
+        "output": "-1",
+        "explanation": "Negative input is invalid."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "n=10",
+        "expected": "55",
+        "description": "Fibonacci"
+      }
+    ]
+  },
+  {
+    "id": "sv_dynamic_array_queue",
+    "title": "Dynamic Array & Queue Operations",
+    "description": "Maintain a dynamic array and a queue together through add, remove, and sum operations.",
+    "difficulty": "medium",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "classes",
+      "arrays",
+      "queues"
+    ],
+    "requirements": "Implement DataStore::add(), remove_first(), and total(). add() appends to both dyn and q; remove_first() removes the first element from both and returns it (or -1 when empty); total() sums dyn.",
+    "template": "class DataStore;\n  int dyn[];\n  int q[$];\n\n  // TODO: append v to both dyn and q.\n  function void add(int v);\n  endfunction\n\n  // TODO: remove and return the first element from both structures.\n  // Return -1 if the store is empty.\n  function int remove_first();\n    return -1;\n  endfunction\n\n  // TODO: return the sum of dyn.\n  function int total();\n    return 0;\n  endfunction\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  DataStore d;\n  int v;\n\n  initial begin\n    d = new;\n    d.add(10);\n    d.add(20);\n    d.add(30);\n    if (d.total() != 60) begin errors++; $display(\"FAIL: total after add\"); end\n    if (d.dyn.size() != 3 || d.q.size() != 3) begin errors++; $display(\"FAIL: sizes after add\"); end\n\n    v = d.remove_first();\n    if (v != 10) begin errors++; $display(\"FAIL: remove_first returned %0d\", v); end\n    if (d.total() != 50) begin errors++; $display(\"FAIL: total after remove\"); end\n    if (d.dyn.size() != 2 || d.q.size() != 2) begin errors++; $display(\"FAIL: sizes after remove\"); end\n    if (d.dyn[0] != 20 || d.q[0] != 20) begin errors++; $display(\"FAIL: front element mismatch\"); end\n\n    v = d.remove_first();\n    if (v != 20) begin errors++; $display(\"FAIL: second remove returned %0d\", v); end\n    v = d.remove_first();\n    if (v != 30) begin errors++; $display(\"FAIL: third remove returned %0d\", v); end\n    if (d.total() != 0 || d.q.size() != 0) begin errors++; $display(\"FAIL: store not empty\"); end\n    v = d.remove_first();\n    if (v != -1) begin errors++; $display(\"FAIL: empty remove should return -1\"); end\n\n    d.add(5);\n    if (d.total() != 5 || d.q.size() != 1 || d.dyn.size() != 1) begin\n      errors++;\n      $display(\"FAIL: add after empty\");\n    end\n\n    if (errors == 0) $display(\"PASS: dynamic array and queue operations\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class DataStore;\n  int dyn[];\n  int q[$];\n\n  function void add(int v);\n    dyn = new[dyn.size() + 1](dyn);\n    dyn[dyn.size() - 1] = v;\n    q.push_back(v);\n  endfunction\n\n  function int remove_first();\n    int v;\n    if (q.size() == 0) return -1;\n    v = q.pop_front();\n    for (int i = 1; i < dyn.size(); i++) dyn[i-1] = dyn[i];\n    dyn = new[dyn.size() - 1](dyn);\n    return v;\n  endfunction\n\n  function int total();\n    int s;\n    s = 0;\n    foreach (dyn[i]) s += dyn[i];\n    return s;\n  endfunction\nendclass",
+    "hint": "Use new[size](old) to grow the dynamic array, push_back for the queue, pop_front for removal, and shift the dynamic array left after a pop.",
+    "examples": [
+      {
+        "input": "add(10), add(20), add(30)",
+        "output": "total=60",
+        "explanation": "Both structures grow together."
+      },
+      {
+        "input": "remove_first()",
+        "output": "10",
+        "explanation": "The front element is removed from both."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "add 10,20,30 then remove three times",
+        "expected": "60, then 10/20/30",
+        "description": "queue operations"
+      }
+    ]
+  },
+  {
+    "id": "sv_count_even",
+    "title": "Count Even Numbers in an Array",
+    "description": "Count how many values in an integer array are even.",
+    "difficulty": "easy",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "arrays",
+      "functions"
+    ],
+    "requirements": "Implement count_even(int arr[]) and return the number of values where arr[i] % 2 == 0.",
+    "template": "function automatic int count_even(int arr[]);\n  // TODO: return the number of even values in arr.\n  return 0;\nendfunction",
+    "testbench": "module tb;\n  int errors = 0;\n  int a[];\n\n  initial begin\n    a = '{1, 2, 4, 7, 8};\n    if (count_even(a) != 3) begin errors++; $display(\"FAIL: expected 3\"); end\n\n    a = new[0];\n    if (count_even(a) != 0) begin errors++; $display(\"FAIL: empty array\"); end\n\n    a = '{-2, -3, 0};\n    if (count_even(a) != 2) begin errors++; $display(\"FAIL: negatives and zero\"); end\n\n    a = '{1, 3, 5};\n    if (count_even(a) != 0) begin errors++; $display(\"FAIL: all odd\"); end\n\n    if (errors == 0) $display(\"PASS: even number count\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "function automatic int count_even(int arr[]);\n  int c;\n  c = 0;\n  foreach (arr[i]) begin\n    if (arr[i] % 2 == 0) c++;\n  end\n  return c;\nendfunction",
+    "hint": "Use foreach and increment a counter when arr[i] % 2 == 0. Zero is even.",
+    "examples": [
+      {
+        "input": "{1,2,4,7,8}",
+        "output": "3",
+        "explanation": "2, 4, and 8 are even."
+      },
+      {
+        "input": "{-2,-3,0}",
+        "output": "2",
+        "explanation": "-2 and 0 are even."
+      }
+    ],
+    "constraints": "",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "{1,2,4,7,8}",
+        "expected": "3",
+        "description": "count"
+      }
+    ]
+  },
+  {
+    "id": "sv_constraint_multiple_4",
+    "title": "Randomization and Constraints - Multiple of 4",
+    "description": "Randomize an 8-bit value that is a multiple of 4 and no greater than 100.",
+    "difficulty": "easy",
+    "category": "systemverilog",
+    "language": "systemverilog",
+    "features": [
+      "classes",
+      "constraints",
+      "randomization"
+    ],
+    "requirements": "Add a constraint to class Multiple4 so x <= 100 and x[1:0] == 2'b00 (the low two bits are zero).",
+    "template": "class Multiple4;\n  rand bit [7:0] x;\n\n  // TODO: constrain x to 0..100 and make it a multiple of 4.\n  constraint c_mult4 {\n  }\nendclass",
+    "testbench": "module tb;\n  int errors = 0;\n  Multiple4 m;\n\n  initial begin\n    m = new;\n    repeat (50) begin\n      if (m.randomize() != 1) begin\n        errors++;\n        $display(\"FAIL: randomize() returned 0\");\n      end else if (m.x > 8'd100) begin\n        errors++;\n        $display(\"FAIL: x=%0d exceeds 100\", m.x);\n      end else if (m.x % 4 != 0) begin\n        errors++;\n        $display(\"FAIL: x=%0d is not a multiple of 4\", m.x);\n      end\n    end\n    if (errors == 0) $display(\"PASS: all values are multiples of 4 up to 100\");\n    else $display(\"FAIL: %0d test(s) failed\", errors);\n    $finish;\n  end\nendmodule",
+    "solution": "class Multiple4;\n  rand bit [7:0] x;\n\n  constraint c_mult4 {\n    x <= 8'd100;\n    x[1:0] == 2'b00;\n  }\nendclass",
+    "hint": "A multiple of 4 has its two least-significant bits equal to zero. Constrain x[1:0] == 2'b00 and x <= 100.",
+    "examples": [
+      {
+        "input": "randomize()",
+        "output": "0, 4, 8, ..., 100",
+        "explanation": "Only multiples of 4 in range."
+      }
+    ],
+    "constraints": "constraint c_mult4 {\n  x <= 8'd100;\n  x[1:0] == 2'b00;\n}",
+    "assertions": "",
+    "test_cases": [
+      {
+        "input": "50 randomizations",
+        "expected": "x <= 100 and x % 4 == 0",
+        "description": "constraint"
+      }
+    ]
+  }
+]
